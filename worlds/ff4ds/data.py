@@ -47,6 +47,7 @@ ITEMS: dict[str, ItemData] = {
     "Tent": ItemData(0x139C),
     "Bomb Fragment": ItemData(0x13AE),
     "Zeus's Wrath": ItemData(0x13B2),
+    "Antarctic Wind": ItemData(0x13B0),
     "Bronze Hourglass": ItemData(0x13BD),
     "Eye Drops x5": ItemData(0x1396, 5),
     "Antidote x5": ItemData(0x1397, 5),
@@ -125,7 +126,7 @@ LOCATIONS: dict[str, LocationData] = {
     "Underground Waterway North B2 - Coffre 1": LocationData("Riviere souterraine", 0x0CC2D1, "Potion", "coffre"),
     "Underground Waterway North B2 - Coffre 2": LocationData("Riviere souterraine", 0x0CC2D2, "Feathered Cap", "coffre"),
     "Waterway Entrance North B1 - Coffre 1": LocationData("Riviere souterraine", 0x0CC2D4, "Zeus's Wrath", "coffre"),
-    "Waterway Entrance North B1 - Coffre 2": LocationData("Riviere souterraine", 0x0CC2D3, None, "coffre"),
+    "Waterway Entrance North B1 - Coffre 2": LocationData("Riviere souterraine", 0x0CC2D3, "Ether", "coffre"),
     "Waterway Entrance North B1 - Coffre 3": LocationData("Riviere souterraine", 0x0CC2D6, "Shadowblade", "coffre"),
     "Waterway Entrance North B1 - Coffre 4": LocationData("Riviere souterraine", 0x0CC2D5, "Bronze Hourglass", "coffre"),
     "Waterway Entrance South B1 - Carte completee": LocationData("Riviere souterraine", 0x0CC4E9, "Eye Drops x5", "carte"),
@@ -136,7 +137,7 @@ LOCATIONS: dict[str, LocationData] = {
     "Riviere souterraine - Octomammoth vaincu": LocationData("Riviere souterraine", 0x0CBDD1, None, "boss"),
 
     # --- Antre de l'Antlion ---------------------------------------------------
-    "Antre de l'Antlion - Coffre": LocationData("Antre de l'Antlion", 0x0CC2E6, None, "coffre"),
+    "Antre de l'Antlion - Coffre": LocationData("Antre de l'Antlion", 0x0CC2E6, "Antarctic Wind", "coffre"),
     "Antre de l'Antlion - Antlion vaincu": LocationData("Antre de l'Antlion", 0x0CBDDB, "Sand Pearl", "boss"),
 
     # --- Kaipo (retour) -------------------------------------------------------
