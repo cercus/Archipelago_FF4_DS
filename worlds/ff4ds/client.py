@@ -29,6 +29,7 @@ from .data import (CHEST_FLAG_BASE, GIL_BOX_TYPE, GOAL_FLAG, ITEM_BOX_TYPE, ITEM
                    ItemData)
 from .inventory import SlotList
 from .names import PLACEHOLDERS, Placeholder, find_msda, parse_entries, read_string, to_game_text
+from .spells import ITEM_SPELLS, SPELL_BLOCK_BASE, SPELL_BLOCK_SIZE, add_spells, spells_from_items
 
 if TYPE_CHECKING:
     from worlds._bizhawk.context import BizHawkClientContext
@@ -61,11 +62,15 @@ KEY_CAPACITY = 128
 # Objets de la carte courante
 OBJECT_LIST = RAM["object_list"]   # pointeur (4 octets) suivi du nom de la carte (8 octets)
 MAX_OBJECTS = 64
+RESCAN_TICKS = 10              # environ 5 secondes de repérage après chaque changement de carte
 OBJ_TYPE, OBJ_NEXT, OBJ_FLAG, OBJ_CONTENT, OBJ_QTY = 0x00, 0x04, 0x48, 0x7C, 0x80
 OBJ_READ_SIZE = 0x84
 
 # Recherche de la table des textes d'objets ("MSDA")
-MSDA_SEARCH_WINDOWS = [(0x240000, 0x40000), (0x200000, 0x40000), (0x280000, 0x80000)]
+# Fenêtres les plus probables d'abord (0x250EA8 avec la ROM d'origine), puis toute la RAM :
+# avec la ROM patchée, les fichiers chargés en mémoire changent de taille et la table se déplace.
+MSDA_SEARCH_WINDOWS = [(0x240000, 0x40000), (0x200000, 0x40000), (0x280000, 0x80000),
+                       (0x100000, 0x100000), (0x300000, 0xFF000)]
 MSDA_READ_SIZE = 0x10000
 READ_CHUNK = 0x8000            # le canal BizHawk refuse les messages de plus de 64 Ko (base64 compris)
 
@@ -75,8 +80,20 @@ FLAGS_START = FLAG_IDS[0]
 FLAGS_SIZE = FLAG_IDS[-1] - FLAGS_START + 1
 
 VANILLA_BY_FLAG = {data.flag: data.vanilla for data in LOCATIONS.values()}
+# Contenu réellement donné par le jeu quand le client n'a rien écrit dans le coffre.
+# La ROM patchée transforme les coffres de gils en coffres d'objets contenant une Potion.
+GIL_CHEST_DEFAULT = ItemData(0x1389)
+IN_GAME_BY_FLAG = {
+    data.flag: (GIL_CHEST_DEFAULT if data.category == "coffre" and ITEMS[data.vanilla].game_id == 0
+                else ITEMS[data.vanilla])
+    for data in LOCATIONS.values() if data.vanilla
+}
 ITEM_BY_AP_ID = {data.ap_id: (name, data) for name, data in ITEMS.items()}
 KEY_ITEM_MIN_ID = 0x2329       # à partir de 9001 : objets clés et augments
+
+# Listes de sorts des personnages 1 (Cecil paladin) à 13 (FuSoYa), lues d'un coup.
+SPELLS_START = SPELL_BLOCK_BASE + SPELL_BLOCK_SIZE
+SPELLS_SIZE = 13 * SPELL_BLOCK_SIZE
 
 
 def off(address: int) -> int:
@@ -97,7 +114,7 @@ class Chest(NamedTuple):
 class FF4DSClient(BizHawkClient):
     game = "Final Fantasy IV DS"
     system = "NDS"
-    patch_suffix = None
+    patch_suffix = ".apff4ds"
 
     def __init__(self) -> None:
         super().__init__()
@@ -109,11 +126,14 @@ class FF4DSClient(BizHawkClient):
         self.scout_requested = False
         self.map_key: bytes | None = None          # pointeur + nom de la carte au dernier repérage
         self.chests: list[Chest] = []
+        self.rescans_left = 0                      # repérages restants après un changement de carte
         self.patched: set[int] = set()             # coffres de la carte courante au contenu natif
         self.native_found: set[int] = set()        # locations dont le jeu a lui-même donné l'objet AP
         self.msda_base: int | None = None
         self.placeholders: list[Placeholder] | None = None  # None : pas encore cherché, [] : indisponible
         self.labelled: dict[int, Placeholder] = {}  # coffre (flag) -> porteur utilisé sur cette carte
+        self.msda_retry = False                    # table introuvable : réessayer à la prochaine carte
+        self.msda_warned = False
 
     # ------------------------------------------------------------------ #
     async def validate_rom(self, ctx: BizHawkClientContext) -> bool:
@@ -203,7 +223,8 @@ class FF4DSClient(BizHawkClient):
         return b"".join(chunks)
 
     async def setup_placeholders(self, ctx: BizHawkClientContext) -> None:
-        """Trouve la table des textes d'objets et prépare les porteurs (une fois par session)."""
+        """Trouve la table des textes d'objets et prépare les porteurs.
+        Si elle est introuvable (pas encore chargée), on réessaiera à la prochaine carte."""
         self.placeholders = []
         for start, size in MSDA_SEARCH_WINDOWS:
             window = await self.read_large(ctx, start, size)
@@ -211,8 +232,14 @@ class FF4DSClient(BizHawkClient):
             if base is not None:
                 break
         else:
-            logger.warning("Table des noms d'objets introuvable : noms Archipelago désactivés dans les coffres.")
+            if not self.msda_warned:
+                logger.warning("Table des noms d'objets introuvable pour l'instant : "
+                               "nouvel essai à chaque changement de carte.")
+                self.msda_warned = True
+            self.msda_retry = True
             return
+        self.msda_retry = False
+        logger.info(f"Table des noms d'objets trouvée à 0x{base:06X}.")
         raw = await self.read_large(ctx, base, MSDA_READ_SIZE)
         entries = parse_entries(base, raw)
         for item_id in PLACEHOLDERS:
@@ -276,6 +303,23 @@ class FF4DSClient(BizHawkClient):
         return False
 
     # ------------------------------------------------------------------ #
+    async def sync_spells(self, ctx: BizHawkClientContext, delivered_count: int) -> None:
+        """Sorts en objets : chaque sort reçu (et déjà compté comme livré) doit être dans la
+        liste de tous les personnages qui l'apprennent normalement. On complète ce qui manque.
+        Écriture idempotente : si le jeu a reconstruit une liste (un personnage rejoint),
+        le sort est simplement réécrit au tour suivant."""
+        itemized = (ctx.slot_data or {}).get("spell_items") or []
+        if not itemized:
+            return
+        wanted = spells_from_items([item.item for item in ctx.items_received[:delivered_count]], itemized)
+        if not wanted:
+            return
+        raw = (await bizhawk.read(ctx.bizhawk_ctx, [(SPELLS_START, SPELLS_SIZE, MAIN_RAM)]))[0]
+        data = add_spells(raw, wanted)
+        if data != raw:
+            await bizhawk.guarded_write(ctx.bizhawk_ctx, [(SPELLS_START, bytes(data), MAIN_RAM)],
+                                        [(SPELLS_START, raw, MAIN_RAM), (RAM["event_running"], [0], MAIN_RAM)])
+
     async def game_watcher(self, ctx: BizHawkClientContext) -> None:
         if ctx.server is None or ctx.slot is None:
             return
@@ -306,13 +350,25 @@ class FF4DSClient(BizHawkClient):
 
         # --- 1. Coffres de la carte courante ---------------------------------
         try:
-            if self.placeholders is None:
+            if self.placeholders is None or (self.msda_retry and map_raw != self.map_key):
                 await self.setup_placeholders(ctx)
             if map_raw != self.map_key:
                 self.map_key = map_raw
                 self.patched = set()
                 await self.restore_labels(ctx)
-                self.chests = await self.scan_chests(ctx, struct.unpack_from("<I", map_raw, 0)[0])
+                self.chests = []
+                self.rescans_left = RESCAN_TICKS
+            if self.rescans_left > 0:
+                # Les coffres sont créés par le script de la carte, parfois après le changement
+                # de nom : on reparcourt la liste pendant quelques tours après l'arrivée.
+                self.rescans_left -= 1
+                found = {chest.flag: chest for chest in self.chests}
+                for chest in await self.scan_chests(ctx, struct.unpack_from("<I", map_raw, 0)[0]):
+                    found[chest.flag] = chest          # adresse la plus récente
+                if len(found) != len(self.chests):
+                    map_name = map_raw[4:12].split(b"\0")[0].decode("ascii", "replace")
+                    logger.info(f"Carte {map_name} : {len(found)} coffre(s) Archipelago repéré(s).")
+                self.chests = list(found.values())
             if ctx.locations_info:
                 await self.patch_chests(ctx, flags)
         except bizhawk.RequestFailedError:
@@ -333,8 +389,8 @@ class FF4DSClient(BizHawkClient):
                     self.native_found.add(flag)       # le jeu a donné l'objet AP lui-même
                 elif flag in self.labelled:
                     self.pending_removals.append(ItemData(self.labelled[flag].item_id))  # le porteur
-                elif VANILLA_BY_FLAG[flag]:
-                    self.pending_removals.append(ITEMS[VANILLA_BY_FLAG[flag]])
+                elif flag in IN_GAME_BY_FLAG:
+                    self.pending_removals.append(IN_GAME_BY_FLAG[flag])
                 planned = self.planned(ctx, flag)
                 if planned is not None and planned[0] != ctx.slot:
                     item_name = ctx.item_names.lookup_in_slot(planned[1], planned[0])
@@ -351,6 +407,10 @@ class FF4DSClient(BizHawkClient):
         if event_raw[0] != 0:
             return
         received = struct.unpack_from("<H", block, off(RECEIVED_COUNTER))[0]
+        try:
+            await self.sync_spells(ctx, received)
+        except bizhawk.RequestFailedError:
+            return
         to_deliver = ctx.items_received[received:]
         if not self.pending_removals and not to_deliver:
             return
@@ -376,6 +436,12 @@ class FF4DSClient(BizHawkClient):
             if network_item.player == ctx.slot and network_item.location in self.native_found:
                 delivered += 1
                 continue
+            sender = ctx.player_names.get(network_item.player, "?")
+            if network_item.item in ITEM_SPELLS:
+                # Sort : appris par sync_spells au tour suivant, une fois compté comme livré.
+                delivered += 1
+                messages.append(f"Reçu : {ctx.item_names.lookup_in_slot(network_item.item)} ({sender})")
+                continue
             entry = ITEM_BY_AP_ID.get(network_item.item)
             if entry is None:
                 logger.warning(f"Objet inconnu reçu : {network_item.item}")
@@ -390,7 +456,6 @@ class FF4DSClient(BizHawkClient):
             elif not inventory.add(data.game_id, data.quantity):
                 break      # inventaire plein : on réessaiera plus tard
             delivered += 1
-            sender = ctx.player_names.get(network_item.player, "?")
             messages.append(f"Reçu : {name} ({sender})")
 
         writes = [

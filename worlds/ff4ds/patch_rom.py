@@ -13,6 +13,10 @@ Patchs actuels :
   - Étape D : le lit de Cecil ne relance plus la nuit (Rosa) ni le départ ; simple repos.
   - Étape E : Grotte de la Brume : plus de voix, Dragon des Brumes sans dialogue.
   - Étape F : Village de la Brume : Signet retirée, Kain part, réveil directement dans le désert.
+  - Étape G : Kaipo : arrivée, nuit à l'auberge et combat des soldats sautés ; Rydia rejoint directement.
+  - Étape H : première visite à Rosa sautée ; l'augment Auto-Potion est donné directement.
+  - Étape I : Rivière souterraine : Tellah sans dialogue, haltes sautées, Octomammoth sans dialogue.
+  - Étape J : Damcyan : Anna, combat Tellah / Edward et cinématique sautés ; Edward rejoint, hovercraft donné.
 """
 import struct, sys
 
@@ -70,28 +74,42 @@ def lz10_compress(data):
 # Archives SSAM                                                               #
 # --------------------------------------------------------------------------- #
 def ssam_read(data):
+    """Entrées [nom (0x20 octets), contenu, décalage d'origine, place disponible d'origine]."""
     assert data[:4] == b"SSAM"
     count = struct.unpack_from("<I", data, 4)[0]
     header_end = 8 + count * 0x28
-    entries = []
+    raw = []
     for i in range(count):
         o = 8 + i * 0x28
         offset, size = struct.unpack_from("<II", data, o)
-        name = bytes(data[o + 8:o + 0x28])
-        entries.append([name, bytes(data[header_end + offset:header_end + offset + size])])
+        raw.append((bytes(data[o + 8:o + 0x28]), offset, size))
+    total = len(data) - header_end
+    entries = []
+    for i, (name, offset, size) in enumerate(raw):
+        following = [r[1] for r in raw if r[1] > offset]
+        slot = (min(following) if following else total) - offset
+        entries.append([name, bytes(data[header_end + offset:header_end + offset + size]), offset, slot])
     return entries
 
 
 def ssam_write(entries):
+    """Reconstruit l'archive en gardant chaque fichier à son décalage d'origine quand il tient
+    dans sa place : la disposition de la ROM change le moins possible (les savestates d'une
+    version précédente restent plus souvent utilisables). Un fichier devenu trop grand est
+    déplacé à la fin de l'archive."""
     header = bytearray(b"SSAM" + struct.pack("<I", len(entries)))
-    body, offset = bytearray(), 0
-    for name, blob in entries:
-        while offset % ALIGN != ALIGN_REST:
-            offset += 1
-        body += bytes(offset - len(body))
+    end = max(e[2] + e[3] for e in entries)
+    placed = []
+    for name, blob, offset, slot in entries:
+        if len(blob) > slot:
+            while end % ALIGN != ALIGN_REST:
+                end += 1
+            offset, end = end, end + len(blob)
+        placed.append((name, blob, offset))
+    body = bytearray(max(off + len(b) for _, b, off in placed))
+    for name, blob, offset in placed:
         header += struct.pack("<II", offset, len(blob)) + name
-        body += blob
-        offset += len(blob)
+        body[offset:offset + len(blob)] = blob
     return bytes(header + body)
 
 
@@ -179,6 +197,39 @@ def append_script(rom, map_name, code):
     entry[1] = lz10_compress(bytes(script))
     rom.setFileByName("CAST_SCRIPT.dat", ssam_write(entries))
     return position
+
+
+NOP = struct.pack("<H", 0x83)          # opcode sans argument et sans effet
+DIALOGUE_OPS = {0x5F, 0x60, 0x64, 0xB0, 0xB1, 0xB2, 0x14F, 0x150}   # fenêtres, textes, noms, attentes de bouton
+
+
+def strip_scene(rom, map_name, start, end, extra_ops=(), max_wait=10):
+    """Accélère une scène sans toucher à sa mise en scène :
+    - les instructions de dialogue (et extra_ops) entre start et end sont neutralisées ;
+    - les attentes (op008) de plus de max_wait images sont ramenées à max_wait.
+    Renvoie le nombre d'instructions modifiées."""
+    from ff4ds_rom import step
+    entries = ssam_read(rom.getFileByName("CAST_SCRIPT.dat"))
+    entry = ssam_get(entries, f"{map_name}.script.lz")
+    script = bytearray(lz10(entry[1]))
+    remove = DIALOGUE_OPS | set(extra_ops)
+    p, changed = start, 0
+    while p < end:
+        op, args, nxt = step(bytes(script), p)
+        length = nxt - p
+        if op in remove:
+            if length % 2 == 0:
+                script[p:nxt] = NOP * (length // 2)
+            else:
+                script[p:p + 6] = goto(nxt)           # instruction de longueur impaire (>= 7)
+            changed += 1
+        elif op == 0x08 and args[0] > max_wait:
+            struct.pack_into("<H", script, p + 2, max_wait)
+            changed += 1
+        p = nxt
+    entry[1] = lz10_compress(bytes(script))
+    rom.setFileByName("CAST_SCRIPT.dat", ssam_write(entries))
+    return changed
 
 
 # --------------------------------------------------------------------------- #
@@ -272,11 +323,112 @@ def apply_patches(rom):
     # Essai 3 (actuel) : on reprend exactement la transition d'origine du réveil :
     #   op025(0, 10, 0), op0BA(12, 0, 10), attendre(12) (t02_02, 00754 à 0076A).
     block = t02_02[0x00754:0x007F7]
+    # Flags normalement activés par la cinématique (comparaison mémoire avec une partie normale) :
+    # 614 = état de la carte du monde après le Titan (éboulement visible et solide), banque 1 : 617.
+    block += struct.pack("<HHH", 0x14, 0, 614) + struct.pack("<HHH", 0x14, 1, 617)
     block += t00_04[0x0095F:0x00963]                          # op0C6(), op0C6() arrêt musique
     block += t02_02[0x007F7:0x00813]                          # op043('f00', -1044480, 0, -40960, ...)
     block += t00_04[0x009A7:0x009B3]                          # fin d'événement + op005
     target = append_script(rom, "t02_00", block)
     patch_script(rom, "t02_00", 0x00420, goto(target), expected=bytes.fromhex("51 01 04 00 65 30"))
+
+    # Étape G : Kaipo.
+    # Essai 1 : strip_scene (dialogues retirés) sur l'arrivée et la nuit à l'auberge -> fonctionnel,
+    #   mais on veut sauter toute la séquence (et le combat contre les soldats).
+    # Essai 2 (actuel) : à l'arrivée à Kaipo (t03_00, segment 3, après les tests des flags 29 et 28),
+    #   à la place du "début d'événement", on exécute directement les effets de toute la séquence
+    #   de l'auberge (t03_30) puis on rend la main : le joueur reste à l'entrée de Kaipo.
+    #     - Rydia rejoint l'équipe : op068(4), op102(4, 7), équipement, sorts (op17C) — copiés de t03_30
+    #     - flags 28 (soldiers), 31 (Whyt), 29 (Rydia), 753, 754
+    t03_30 = load_script(rom, "t03_30")
+    block = t03_30[0x0124C:0x01293]
+    for number in (28, 31, 29, 753, 754):
+        block += struct.pack("<HHH", 0x14, 0, number)
+    block += struct.pack("<H", 0x05)                          # retour
+    patch_script(rom, "t03_00", 0x00A16, block, expected=bytes.fromhex("0e 00 02 00 00 00 73 4d 74 b6"))
+
+    # Étape H : première visite à Rosa (t03_01, segment 3, 00328 à 00653).
+    # Déclenchée en entrant dans la zone près du lit (op124). Pas de changement de carte ni de combat :
+    # on remplace la scène par ses effets : donner l'augment Auto-Potion (location AP, le client
+    # retire l'objet d'origine), op15C('j001', 1, 0, 0) comme à la fin de la scène, flag 30, retour.
+    t03_01 = load_script(rom, "t03_01")
+    block = t03_01[0x005AC:0x005B1]                           # donner_objet(9136 Auto-Potion, 1)
+    block += t03_01[0x00622:0x00631]                          # op15C('j001', 1, 0, 0)
+    block += struct.pack("<HHH", 0x14, 0, 30) + struct.pack("<H", 0x05)
+    patch_script(rom, "t03_01", 0x00328, block, expected=bytes.fromhex("0e 00 02 00 00 00 73 4d 74 b6"))
+    # Namingway explique l'augment en sortant de la pièce (t03_00, segment 8, conditions : flag 966 à 0,
+    # flags 30 et 29 à 1). On le marque comme fait : flag_on(0, 966), retour.
+    patch_script(rom, "t03_00", 0x012E8, struct.pack("<HHH", 0x14, 0, 966) + struct.pack("<H", 0x05),
+                 expected=bytes.fromhex("0e 00 02 00 00 00 73 4d 74 b6"))
+
+    # Étape I : Rivière souterraine (d01_xx).
+    # d01_00 segment 3 : rencontre de Tellah. Mécanisme : parler à Tellah (segment 20) ouvre un
+    #   événement et active le flag temporaire (10, 6) ; la boucle du segment 3 attend ce flag puis
+    #   appelle la scène (fonction en 002E3), qui se termine par la fin d'événement.
+    #   Essais 1 et 2 (remplacer la scène par ses effets, avec ou sans fin d'événement) : jeu figé.
+    #   Essai 3 (actuel) : on garde toute la mise en scène et on retire seulement les dialogues.
+    strip_scene(rom, "d01_00", 0x0027B, 0x00865)
+    # d01_03 segment 3 : halte de Cecil et Tellah (« We can rest here. »), flag 33. Rien d'autre.
+    patch_script(rom, "d01_03", 0x001A7, struct.pack("<HHH", 0x14, 0, 33) + struct.pack("<H", 0x05),
+                 expected=bytes.fromhex("0e 00 02 00 00 00 73 4d 74 b6"))
+    # d01_06 segment 3 : « From here we must travel outside for a time. », flag 34.
+    patch_script(rom, "d01_06", 0x00234, struct.pack("<HHH", 0x14, 0, 34) + struct.pack("<H", 0x05),
+                 expected=bytes.fromhex("0e 00 02 00 00 00 73 4d 74 b6"))
+    # d01_07 segment 3 : scène avant le boss, avec changements de carte vers d01_08 -> on ne retire
+    #   que les dialogues. d01_09 segment 3 : Octomammoth -> idem, le combat (op042(904)) est gardé.
+    strip_scene(rom, "d01_07", 0x00164, 0x01380)
+    strip_scene(rom, "d01_09", 0x00274, 0x00900)
+
+    # Étape J : château de Damcyan (t04_04, sommet). Mécanisme identique à Tellah : parler à Anna
+    #   (segment 32 ou 48) ouvre un événement et active le flag temporaire (10, 11) ; le segment 3
+    #   attend ce flag (op009) puis joue : mort d'Anna, combat Tellah contre Edward (op042(905)),
+    #   Tellah part, Edward rejoint, cinématique de l'hovercraft (op151(5, ..., 'f00')), puis sur la
+    #   carte du monde la scène de l'hovercraft (f00, segment 6 : flags 44 et 900, op0B3 = position).
+    # Essai 1 : juste après l'attente (0037D), on exécute directement les effets, puis la fermeture
+    #   d'écran d'origine (op024(2, 10, 0), attendre) et la fin d'événement (ouverte en parlant à Anna) :
+    #     - Tellah part, Edward rejoint (niveau, équipement) — copiés de t04_04 00838
+    #     - flags 41, 42 (scène), 43, 44 (hovercraft), 900 (hovercraft disponible)
+    #     - op0B3(1, ...) : hovercraft posé devant Damcyan — copié de f00 01B55
+    t04_04 = load_script(rom, "t04_04")
+    f00 = load_script(rom, "f00")
+    block = t04_04[0x00838:0x0085E]
+    for number in (41, 42, 43, 44, 900):
+        block += struct.pack("<HHH", 0x14, 0, number)
+    block += f00[0x01B55:0x01B73]                              # op0B3(1, 81920, 8192, -3153920, ...)
+    block += f00[0x01B8D:0x01B97]                              # op024(2, 10, 0)
+    block += struct.pack("<HH", 0x08, 15)                      # attendre(15)
+    block += t00_04[0x009A7:0x009B3]                           # fin d'événement + op005
+    patch_script(rom, "t04_04", 0x0037D, block, expected=bytes.fromhex("25 00 02 00 00 00 0a 00 00 00"))
+
+    # Étape K : Antre de l'Antlion (d02_04, segment 3, zone près du nid). Même approche que
+    #   l'Octomammoth : on garde la mise en scène et le combat (op042(906)), on retire les dialogues.
+    #   La fin de la scène donne la Sand Pearl (donner_objet(9004)) et active le flag 47.
+    strip_scene(rom, "d02_04", 0x00132, 0x00A8D)
+
+    # Étape L : Rosa soignée à Kaipo (t03_01). Mécanisme comme Damcyan : parler à Rosa (segment 20)
+    #   ouvre un événement et le menu Objets ; utiliser la Sand Pearl (op076(9004, 0205E)) active le
+    #   flag temporaire (10, 5) sans fermer l'événement. Le segment 3 attend ce flag (op009) puis
+    #   appelle la scène de guérison (00655, se termine par op043 vers t03_00), la nuit à Kaipo
+    #   (t03_00 segment 4 : Edward, combat contre les Sahagin op042(907), flag 50, cinématique),
+    #   puis le matin (01061 : repos, « Best be moving », flag 52).
+    # Essai 1 : à la place de l'appel de la scène (002DE), on saute vers un bloc ajouté :
+    #     - fondu au noir (copié de d02_04 009EB), attendre(12)
+    #     - Rosa rejoint l'équipe (niveau, équipement), Sand Pearl retirée — copiés de t03_01 00FFC
+    #     - Rosa endormie (acteur 20) retirée de la pièce : op02B(20, 0)
+    #     - flags 49 (objectif), 50 (nuit faite), 52 (matin fait)
+    #     - repos (soins) : flag 990 + fonction globale, copiés de t03_01 010A5
+    #     - réouverture de l'écran op024(2, 10, 0), attendre(15), fin d'événement, retour
+    block = load_script(rom, "d02_04")[0x009EB:0x009F5] + struct.pack("<HH", 0x08, 12)
+    block += t03_01[0x00FFC:0x0101B]                           # op068(3), op102(3, 15), op0AC(3, ...)
+    block += t03_01[0x0101D:0x0102C]                           # op073(9004, 1), op00E(2, 3278489185)
+    block += struct.pack("<HHB", 0x2B, 20, 0)                  # op02B(20, 0)
+    for number in (49, 50, 52):
+        block += struct.pack("<HHH", 0x14, 0, number)
+    block += t03_01[0x010A5:0x010BB]                           # repos
+    block += f00[0x01B8D:0x01B97] + struct.pack("<HH", 0x08, 15)
+    block += t00_04[0x009A7:0x009B3]                           # fin d'événement + op005
+    patch_script(rom, "t03_01", 0x002DE, goto(append_script(rom, "t03_01", block)),
+                 expected=bytes.fromhex("0e 00 00 00 00 00 0e 6d 4f 97"))
 
     # (Essai retiré : ne plus placer l'éboulement du Titan sur la carte du monde (f00, 003D2).
     #  Les rochers disparaissaient mais une barrière invisible restait : la collision fait partie

@@ -8,11 +8,11 @@ class TestSandPearl(FF4DSTestBase):
         self.collect_by_name("Sand Pearl")
         self.assertTrue(self.can_reach_location("Rosa soignee"))
 
-    def test_baron_is_excluded(self) -> None:
-        """Les locations de Baron (fenêtre de début de jeu) ne reçoivent pas de progression."""
+    def test_baron_is_not_excluded(self) -> None:
+        """Avec la ROM patchée, Baron reste accessible : ses locations peuvent tout recevoir."""
         from BaseClasses import LocationProgressType
-        location = self.multiworld.get_location("Chateau de Baron - Coffre 1", self.player)
-        self.assertEqual(location.progress_type, LocationProgressType.EXCLUDED)
+        location = self.multiworld.get_location("Baron Castle - Coffre 1", self.player)
+        self.assertEqual(location.progress_type, LocationProgressType.DEFAULT)
 
 
 class TestWithoutNamingway(FF4DSTestBase):
