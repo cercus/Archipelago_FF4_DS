@@ -3,13 +3,13 @@ from ..spells import SPELL_ITEM_IDS, SPELL_NAMES, itemized_spells, learners, spe
 
 
 class TestSpellItems(FF4DSTestBase):
-    options = {"character_shuffle": False}      # équipe d'origine : Rydia est la lanceuse de sorts
+    options = {"character_shuffle": False}      # équipe d'origine : Rydia, Tellah, Rosa, Porom, Palom...
     def test_spells_in_pool(self) -> None:
-        """Les sorts de Rydia (enfant) appris après le niveau 1 sont dans le pool."""
+        """Les sorts appris après le niveau 1 par les lanceurs de sorts arrivés avant l'objectif sont dans
+        le pool (Rydia, Rosa, Porom, Palom, Tellah)."""
         names = [item.name for item in self.multiworld.itempool if item.player == self.player]
-        for name in ("Sight", "Hold", "Toad", "Progressive Cure", "Progressive Thunder"):
+        for name in ("Sight", "Hold", "Toad", "Progressive Cure", "Progressive Thunder", "Progressive Blizzard"):
             self.assertIn(name, names)
-        self.assertNotIn("Progressive Blizzard", names)   # Blizzard est un sort de départ
 
     def test_pool_fits_locations(self) -> None:
         locations = [loc for loc in self.multiworld.get_locations(self.player) if loc.address is not None]
@@ -22,7 +22,7 @@ class TestWithoutStartingSpells(FF4DSTestBase):
 
     def test_cure_chain(self) -> None:
         names = [item.name for item in self.multiworld.itempool if item.player == self.player]
-        self.assertEqual(names.count("Progressive Cure"), 2)       # Cure puis Cura
+        self.assertGreaterEqual(names.count("Progressive Cure"), 2)   # Cure, Cura, (Curaga, Curaja)
         self.assertIn("Progressive Blizzard", names)
 
 

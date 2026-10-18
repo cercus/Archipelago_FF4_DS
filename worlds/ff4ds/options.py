@@ -1,7 +1,7 @@
 """Options proposées au joueur dans son fichier YAML."""
 from dataclasses import dataclass
 
-from Options import Choice, DefaultOnToggle, OptionSet, PerGameCommonOptions
+from Options import Choice, DefaultOnToggle, OptionSet, PerGameCommonOptions, StartInventoryPool
 
 from .rom.characters import CHARACTERS
 
@@ -56,17 +56,13 @@ class RestrictedCharacters(OptionSet):
     default = frozenset({"Edge", "FuSoYa"})
 
 
-class CharacterDepartures(Choice):
+class ReturningCharacters(DefaultOnToggle):
     """
-    never : personne ne quitte l'équipe (comme Free Enterprise). L'équipe est limitée à 5 :
-            une fois pleine, les emplacements suivants restent vides.
-    vanilla : les personnages des emplacements de Kain et de Tellah partent comme dans l'histoire
-              (village de la Brume, Damcyan) en rendant leur équipement.
+    Il y a plus d'emplacements que de personnages : un emplacement sans personnage fait revenir
+    un personnage déjà venu puis parti (départ de l'histoire ou remplacé quand l'équipe était pleine).
+    Désactivé : ces emplacements restent vides.
     """
-    display_name = "Départs de personnages"
-    option_never = 0
-    option_vanilla = 1
-    default = 0
+    display_name = "Retour des personnages partis"
 
 
 class ShopRandomization(Choice):
@@ -96,12 +92,15 @@ class ShopPartyEquipment(DefaultOnToggle):
 
 @dataclass
 class FF4DSOptions(PerGameCommonOptions):
+    # Option commune d'Archipelago (à déclarer par chaque jeu) : objets de départ retirés du pool,
+    # remplacés par du remplissage. start_inventory, lui, les ajoute sans rien retirer.
+    start_inventory_from_pool: StartInventoryPool
     namingway_locations: NamingwayLocations
     spell_items: SpellItems
     starting_spells: StartingSpells
     character_shuffle: CharacterShuffle
     allowed_characters: AllowedCharacters
     restricted_characters: RestrictedCharacters
-    character_departures: CharacterDepartures
+    returning_characters: ReturningCharacters
     shop_randomization: ShopRandomization
     shop_party_equipment: ShopPartyEquipment

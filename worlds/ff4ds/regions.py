@@ -4,17 +4,16 @@ from typing import TYPE_CHECKING
 
 from BaseClasses import Region
 
-from .data import REGIONS
+from .data import CONNECTIONS, REGIONS
 
 if TYPE_CHECKING:
     from .world import FF4DSWorld
 
 
 def create_and_connect_regions(world: FF4DSWorld) -> None:
-    regions = [Region(name, world.player, world.multiworld) for name in REGIONS]
-    world.multiworld.regions += regions
+    regions = {name: Region(name, world.player, world.multiworld) for name in REGIONS}
+    world.multiworld.regions += regions.values()
 
-    # L'histoire est linéaire : chaque région mène à la suivante.
-    # Les règles (ex. Sand Pearl) sont posées dans rules.py.
-    for current, following in zip(regions, regions[1:]):
-        current.connect(following, f"{current.name} -> {following.name}")
+    # Chemins de data.CONNECTIONS ; les objets nécessaires sont posés dans rules.py.
+    for source, target, _ in CONNECTIONS:
+        regions[source].connect(regions[target], f"{source} -> {target}")

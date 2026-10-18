@@ -9,8 +9,13 @@ from worlds.AutoWorld import WebWorld, World
 from . import items, locations, regions, rules
 from . import options as ff4ds_options
 from .data import GOAL_FLAG
+
+# Équipe pleine : jamais atteinte avec les départs de l'histoire (4 personnages au plus avec Cecil) ;
+# option full_party retirée le 18/10/2026.
+FULL_PARTY = "replace_oldest"
 from .rom import FF4DSProcedurePatch, FF4DSSettings
-from .rom.characters import CHARACTERS, GOAL_SLOT, SLOTS, present_slots, vanilla_party
+from .rom.characters import (CHARACTERS, GOAL_SLOT, SLOTS, STORY, PartyPlan, fill_empty_slots, joined_slots,
+                              plan_party, vanilla_party)
 from .shops import SHOPS, describe, party_mask, randomize_shops
 from .spells import itemized_spells
 
@@ -58,7 +63,7 @@ class FF4DSWorld(World):
         mask = None
         if self.options.shop_party_equipment:
             members = [0] + [CHARACTERS[self.party[slot]].char_id      # 0 : Cecil (chevalier noir)
-                             for slot in present_slots(self.party, self.departures())]
+                             for slot in joined_slots(self.plan())]
             mask = party_mask(members)
         self.shops = randomize_shops(self.random, self.options.shop_randomization.current_key, mask)
 
@@ -73,15 +78,28 @@ class FF4DSWorld(World):
         self.random.shuffle(preferred)
         self.random.shuffle(restricted)
         order = preferred + restricted
-        return {slot: (order[i] if i < len(order) else None) for i, slot in enumerate(SLOTS)}
+        party = {slot: (order[i] if i < len(order) else None) for i, slot in enumerate(SLOTS)}
+        if self.options.returning_characters:
+            party = fill_empty_slots(party, self.departures(), FULL_PARTY,
+                                     self.random.choice)
+        return party
 
     def departures(self) -> str:
-        return self.options.character_departures.current_key
+        # Toujours les départs de l'histoire (option character_departures retirée le 18/10/2026) : ainsi une
+        # place reste libre pour l'arrivée scénarisée de Rydia pendant le combat contre Golbez.
+        return "vanilla"
+
+    def plan(self) -> PartyPlan:
+        """Arrivées (et remplacements) et départs de personnages tout au long de l'histoire."""
+        return plan_party(self.party, self.departures(), FULL_PARTY)
 
     def casters(self) -> list[int]:
-        """Personnages de l'équipe avant l'objectif (identifiants op068), pour les sorts en objets."""
-        return [CHARACTERS[self.party[slot]].char_id
-                for slot in present_slots(self.party, self.departures()) if slot != GOAL_SLOT]
+        """Personnages qui rejoignent l'équipe avant l'objectif (identifiants op068), pour les sorts en objets."""
+        before_goal = [slot for kind, slot in STORY if kind == "join"]
+        if GOAL_SLOT in before_goal:
+            before_goal = before_goal[:before_goal.index(GOAL_SLOT)]
+        plan = self.plan()
+        return [CHARACTERS[plan.joins[slot][0]].char_id for slot in before_goal if plan.joins.get(slot)]
 
     def create_regions(self) -> None:
         regions.create_and_connect_regions(self)
@@ -110,6 +128,8 @@ class FF4DSWorld(World):
             "level1_chars": [] if self.options.starting_spells else self.casters(),
             "party": self.party,
             "departures": self.departures(),
+            "full_party": FULL_PARTY,
+            "vehicle_items": True,             # véhicules posés par le client (objets Archipelago)
             "shops": {str(index): items for index, items in self.shops.items()},
         }).encode("utf-8"))
         file_name = self.multiworld.get_out_file_name_base(self.player) + patch.patch_file_ending
@@ -122,11 +142,18 @@ class FF4DSWorld(World):
         return itemized_spells(bool(self.options.starting_spells), self.casters())
 
     def write_spoiler(self, spoiler_handle) -> None:
-        present = present_slots(self.party, self.departures())
+        plan = self.plan()
         spoiler_handle.write(f"\n\nPersonnages ({self.player_name}) :\n")
-        for slot in SLOTS:
-            name = self.party.get(slot) if slot in present else None
-            spoiler_handle.write(f"  {slot}: {name or '(vide)'}\n")
+        for kind, slot in STORY:
+            if kind == "join":
+                joined = plan.joins.get(slot)
+                if not joined:
+                    text = "(vide)"
+                else:
+                    text = joined[0] + (f" (remplace {joined[1]})" if joined[1] else "")
+                spoiler_handle.write(f"  {slot}: {text}\n")
+            elif plan.leaves.get(slot):
+                spoiler_handle.write(f"  {plan.leaves[slot]} quitte l'équipe ({slot})\n")
         if self.shops:
             spoiler_handle.write(f"\nMagasins ({self.player_name}) :\n")
             for index, items in sorted(self.shops.items()):
@@ -137,6 +164,6 @@ class FF4DSWorld(World):
         return {
             "goal_flag": GOAL_FLAG,
             "spell_items": self.get_itemized_spells(),
-            "party": {slot: self.party[slot] for slot in present_slots(self.party, self.departures())},
+            "party": {slot: self.plan().joins[slot][0] for slot in joined_slots(self.plan())},
             **self.options.as_dict("namingway_locations"),
         }

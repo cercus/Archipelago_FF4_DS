@@ -14,6 +14,7 @@ from typing import NamedTuple
 #   - gils         : GIL_FLAG | montant                ex. 480 gils   -> 0x010001E0
 # Le client décode cet identifiant pour savoir quoi écrire en mémoire.
 GIL_FLAG = 0x01000000
+VEHICLE_FLAG = 0x03000000     # véhicule : VEHICLE_FLAG | numéro (1 hovercraft, 2 Enterprise)
 
 
 class ItemData(NamedTuple):
@@ -21,9 +22,12 @@ class ItemData(NamedTuple):
     quantity: int = 1     # quantité donnée (ou montant pour les gils)
     kind: str = "filler"  # "progression", "useful" ou "filler"
     key_item: bool = False  # True : va dans la liste des objets clés (0x0D8084)
+    vehicle: int = 0      # véhicule (VEHICLES) : posé par le client, pas mis dans l'inventaire
 
     @property
     def ap_id(self) -> int:
+        if self.vehicle:
+            return VEHICLE_FLAG | self.vehicle
         if self.game_id == 0:
             return GIL_FLAG | self.quantity
         return (self.quantity << 16) | self.game_id
@@ -31,6 +35,8 @@ class ItemData(NamedTuple):
 
 ITEMS: dict[str, ItemData] = {
     # Progression
+    "Hovercraft": ItemData(0, kind="progression", vehicle=1),
+    "Enterprise": ItemData(0, kind="progression", vehicle=2),
     "Sand Pearl": ItemData(0x232C, kind="progression", key_item=True),
     # Utiles
     "Auto-Potion": ItemData(0x23B0, kind="useful", key_item=True),   # augment
@@ -66,6 +72,10 @@ ITEMS: dict[str, ItemData] = {
     "Gold Needle": ItemData(0x1391),
     "Gnomish Bread": ItemData(0x139F),
     "2000 Gil": ItemData(0, 2000),
+    # Tranche 2
+    "960 Gil": ItemData(0, 960),
+    "Hi-Potion x3": ItemData(0x138A, 3),
+    "Bomb Core x3": ItemData(0x13B5, 3),
     "Gold Hairpin": ItemData(0x1FB1, kind="useful"),
     "Clothing": ItemData(0x2009, kind="useful"),
     "Ruby Ring": ItemData(0x206D, kind="useful"),
@@ -82,6 +92,88 @@ ITEMS: dict[str, ItemData] = {
     "Spider Silk": ItemData(0x13B9),
     "Lamia Harp": ItemData(0x189E, kind="useful"),
     "Emergency Exit": ItemData(0x139E),
+    # Fabul
+    "Deathbringer": ItemData(0x1773, kind="useful"),
+    "Demon Shield": ItemData(0x1F43, kind="useful"),
+    "Counter": ItemData(0x23B3, kind="useful", key_item=True),     # augment
+    # Mont Ordeals
+    "Red Fang": ItemData(0x13AB),
+    "Curse": ItemData(0x23BD, kind="useful", key_item=True),       # augment
+    # Tranche 3 : Baron, Ancient Waterway
+    "Baron Key": ItemData(0x2330, kind="progression", key_item=True),  # ouvre l'Ancient Waterway
+    "Tsunami": ItemData(0x23BE, kind="useful", key_item=True),     # augment
+    "Ancient Sword": ItemData(0x1778, kind="useful"),
+    "Remedy x3": ItemData(0x1399, 3),
+    "1000 Gil": ItemData(0, 1000),
+    # Tranche 4 : Troia, caverne magnétique, tour de Zott
+    "Whisperweed": ItemData(0x2331, kind="progression", key_item=True),   # Elfe noir (op076(9009))
+    "Earth Crystal": ItemData(0x232E, kind="progression", key_item=True), # accès à Zott (op076(9006))
+    "Decoy": ItemData(0x13C2),
+    "Remedy": ItemData(0x1399),
+    "Echo Herbs": ItemData(0x1395),
+    "Great Bow": ItemData(0x1B5B, kind="useful"),
+    "Fire Arrows": ItemData(0x1BC0, kind="useful"),
+    "5000 Gil": ItemData(0, 5000),
+    "Silver Apple": ItemData(0x13A3),
+    "Ice Arrows": ItemData(0x1BC1, kind="useful"),
+    "50000 Gil": ItemData(0, 50000),
+    "Lightning Arrows": ItemData(0x1BC2, kind="useful"),
+    "Gysahl Greens": ItemData(0x13A0),
+    "Faerie Claws": ItemData(0x1904, kind="useful"),
+    "Flame Mail": ItemData(0x2019, kind="useful"),
+    "Flame Sword": ItemData(0x177C, kind="useful"),
+    "Hell Claws": ItemData(0x1905, kind="useful"),
+    "Gaia Hammer": ItemData(0x1967, kind="useful"),
+    "Sage's Surplice": ItemData(0x2010, kind="useful"),
+    "Flame Shield": ItemData(0x1F46, kind="useful"),
+    "Whirlwind": ItemData(0x23BF, kind="useful", key_item=True),
+    "Vampire Fang": ItemData(0x13B8),
+    "Vampire Fang x3": ItemData(0x13B8, 3),
+    "Silent Bell": ItemData(0x13BA),
+    "Silent Bell x3": ItemData(0x13BA, 3),
+    "Zeus's Wrath x5": ItemData(0x13B2, 5),
+    "Heavenly Wrath": ItemData(0x13B3),
+    # Tranche 5 : Agart, monde souterrain
+    "Magma Stone": ItemData(0x2334, kind="progression", key_item=True),   # puits d'Agart (op076(9012))
+    "Gaia Drum": ItemData(0x13B4),
+    "Cottage": ItemData(0x139D),
+    "Dwarven Axe": ItemData(0x19C9, kind="useful"),
+    "Silver Hourglass": ItemData(0x13BE),
+    "Power Armlet": ItemData(0x2072, kind="useful"),
+    "Black Belt Gi": ItemData(0x2015, kind="useful"),
+    "Draw Attacks": ItemData(0x23C1, kind="useful", key_item=True),   # augment (Giott)
+    # Tranche 6 : tour de Babil
+    "Tower Key": ItemData(0x2337, kind="progression", key_item=True),     # portes des canons (op076(9015))
+    "Green Beret": ItemData(0x1FAA, kind="useful"),
+    "Cat Claws": ItemData(0x1906, kind="useful"),
+    "Icebrand": ItemData(0x177D, kind="useful"),
+    "Ice Lance": ItemData(0x17D8, kind="useful"),
+    "Killer Bow": ItemData(0x1B5C, kind="useful"),
+    "Ice Shield": ItemData(0x1F47, kind="useful"),
+    "Ice Armor": ItemData(0x201B, kind="useful"),
+    "Arctic Wind": ItemData(0x13B1),
+    "Antarctic Wind x5": ItemData(0x13B0, 5),
+    "Arctic Wind x3": ItemData(0x13B1, 3),
+    "White Fang": ItemData(0x13AC),
+    "Hi-Potion x5": ItemData(0x138A, 5),
+    "Remedy x5": ItemData(0x1399, 5),
+    "Ether x2": ItemData(0x138C, 2),
+    "Heavenly Wrath x3": ItemData(0x13B3, 3),
+    "Blue Fang": ItemData(0x13AD),
+    "Bronze Hourglass x3": ItemData(0x13BD, 3),
+}
+
+# Véhicules : le client active le flag « disponible » et écrit la position (vérifié le 18/10/2026 :
+# depuis une ville, le véhicule apparaît à la sortie sur la carte du monde, même loin du centre).
+class VehicleData(NamedTuple):
+    flag: int                     # octet « véhicule disponible »
+    position: int                 # X, Y, Z (u32 chacun) en RAM
+    coords: tuple[int, int | None, int]   # Y None : on ne l'écrit pas
+
+
+VEHICLES: dict[int, VehicleData] = {
+    1: VehicleData(0x0CC130, 0x0D05F8, (81920, None, -3153920)),     # hovercraft, devant Damcyan
+    2: VehicleData(0x0CC131, 0x0D0604, (-978944, 0, 1658880)),       # Enterprise, devant Baron
 }
 
 # Objets de remplissage tirés au hasard quand il manque des objets dans le pool.
@@ -102,6 +194,44 @@ REGIONS = [
     "Damcyan",
     "Antlion’s Den",
     "Kaipo (retour)",
+    "Mount Hobs",
+    "Fabul",
+    "Mount Ordeals",
+    "Baron (retour)",
+    "Ancient Waterway",
+    "Troia",
+    "Lodestone Cavern",
+    "Tower of Zot",
+    "Agart",
+    "Underworld",
+    "Dwarf Castle",
+    "Tower of Babil",
+]
+
+# Chemins entre régions (départ : Baron) et objets nécessaires (l'un d'eux suffit).
+# Monde ouvert : le chemin maudit (Baron <-> Mysidia) est ouvert dès le départ ; les hauts-fonds
+# (Antlion, mont Hobs) demandent l'hovercraft ou l'Enterprise.
+CONNECTIONS: list[tuple[str, str, tuple[str, ...]]] = [
+    ("Baron", "Mist cave", ()),
+    ("Mist cave", "Mist Village", ()),
+    ("Mist Village", "Kaipo", ()),
+    ("Kaipo", "Canal souterrain", ()),
+    ("Canal souterrain", "Damcyan", ()),
+    ("Kaipo", "Kaipo (retour)", ()),
+    ("Damcyan", "Antlion’s Den", ("Hovercraft", "Enterprise")),
+    ("Kaipo", "Mount Hobs", ("Hovercraft", "Enterprise")),
+    ("Mount Hobs", "Fabul", ()),
+    ("Baron", "Fabul", ("Enterprise",)),
+    ("Baron", "Mount Ordeals", ()),            # chemin maudit -> Mysidia -> mont Ordeals
+    ("Baron", "Baron (retour)", ()),
+    ("Baron (retour)", "Ancient Waterway", ("Baron Key",)),
+    ("Baron", "Troia", ("Enterprise",)),       # continent de Troia : par les airs
+    ("Troia", "Lodestone Cavern", ()),         # île de la caverne : chocobo noir (village des chocobos)
+    ("Troia", "Tower of Zot", ("Earth Crystal",)),   # une Épopte téléporte à la tour (étape X2)
+    ("Baron", "Agart", ("Enterprise",)),       # île d'Agart : par les airs
+    ("Agart", "Underworld", ("Magma Stone",)), # puits d'Agart -> trou, avec l'Enterprise (jamais abîmée)
+    ("Underworld", "Dwarf Castle", ()),
+    ("Underworld", "Tower of Babil", ()),      # toujours accessible (le chemin des nains ou l'Enterprise)
 ]
 
 # --------------------------------------------------------------------------- #
@@ -234,6 +364,7 @@ LOCATIONS: dict[str, LocationData] = {
     "Mist Village - Coffre 7": LocationData("Mist Village", 0x0CC1C2, "Polymorph Rod", "coffre"),
 
     # --- Damcyan (coffres relevés dans la ROM) ---
+    "Damcyan - Hovercraft": LocationData("Damcyan", 0x0CBDD8, "Hovercraft", "evenement"),    # flag 44
     "Damcyan Castle - Coffre 1": LocationData("Damcyan", 0x0CC1C6, "Tent", "coffre"),
     "Damcyan Castle - Coffre 2": LocationData("Damcyan", 0x0CC1C7, "Power Bow", "coffre"),
     "Damcyan Castle - Coffre 3": LocationData("Damcyan", 0x0CC1C8, "Feathered Cap", "coffre"),
@@ -264,11 +395,207 @@ LOCATIONS: dict[str, LocationData] = {
     "Underground Lake B2 - Map completed": LocationData("Canal souterrain", 0x0CC4F1, "Potion x5", "carte"),
     "Underground Lake B1 - Map completed": LocationData("Canal souterrain", 0x0CC4F2, "Zeus's Wrath x3", "carte"),
 
+    # --- Tranche 2 : Mount Hobs (d03_00 à d03_03) --------------------------------
+    "Mount Hobs Vista - Coffre 1": LocationData("Mount Hobs", 0x0CC2ED, "Tent", "coffre"),
+    "Mount Hobs Vista - Coffre 2": LocationData("Mount Hobs", 0x0CC2EE, "Potion", "coffre"),
+    "Mount Hobs Vista - Coffre 3": LocationData("Mount Hobs", 0x0CC2EF, "Gold Needle", "coffre"),
+    "Mount Hobs Vista - Coffre 4": LocationData("Mount Hobs", 0x0CC2F0, "960 Gil", "coffre"),
+    "Mount Hobs Summit - Coffre 1": LocationData("Mount Hobs", 0x0CC2F1, "Holy Arrows", "coffre"),
+    "Mount Hobs Summit - Mom Bomb defeated": LocationData("Mount Hobs", 0x0CBDE5, None, "boss"),
+    "Mount Hobs West Slope - Map completed": LocationData("Mount Hobs", 0x0CC4F8, "Hi-Potion x3", "carte"),
+    "Mount Hobs Vista - Map completed": LocationData("Mount Hobs", 0x0CC4F9, None, "carte"),
+    "Mount Hobs Summit - Map completed": LocationData("Mount Hobs", 0x0CC4FA, None, "carte"),
+    "Mount Hobs East Slope - Map completed": LocationData("Mount Hobs", 0x0CC4FB, "Bomb Core x3", "carte"),
+
+    # --- Tranche 2 : Fabul (t05_xx) -------------------------------------------
+    "Fabul Throne Room - Coffre 1": LocationData("Fabul", 0x0CC1D5, "Hermes Sandals", "coffre"),   # caché
+    "Fabul Throne Room - Coffre 2": LocationData("Fabul", 0x0CC1D6, "Spider Silk", "coffre"),
+    "Fabul Throne Room - Coffre 3": LocationData("Fabul", 0x0CC1D7, "Demon Shield", "coffre"),
+    "Fabul Throne Room - Coffre 4": LocationData("Fabul", 0x0CC1D8, "Ether", "coffre"),
+    "Fabul Tower - Coffre 1": LocationData("Fabul", 0x0CC1D9, "Potion", "coffre"),                # t05_04
+    "Fabul Tower - Coffre 2": LocationData("Fabul", 0x0CC1DA, "Antarctic Wind", "coffre"),
+    "Fabul Tower - Coffre 3": LocationData("Fabul", 0x0CC1DB, "Bomb Fragment", "coffre"),
+    "Fabul Tower - Coffre 4": LocationData("Fabul", 0x0CC1DC, "Zeus's Wrath", "coffre"),          # caché
+    "Fabul Royal Tower - Coffre 1": LocationData("Fabul", 0x0CC1DD, "Bacchus's Wine", "coffre"),  # t05_08, caché
+    "Fabul King's Bedchamber - Coffre 1": LocationData("Fabul", 0x0CC1DE, "Tent", "coffre"),       # t05_09
+    "Fabul - Castle defended": LocationData("Fabul", 0x0CBDF2, None, "boss"),                     # flag 70
+    "Fabul - King gives Deathbringer": LocationData("Fabul", 0x0CBDF6, "Deathbringer", "evenement"),  # flag 74
+    "Fabul - Counter augment": LocationData("Fabul", 0x0CBDF7, "Counter", "evenement"),           # flag 75
+
+    # --- Tranche 2 : Mount Ordeals (d04_00 à d04_03) ---------------------------
+    "Mount Ordeals Entrance - Coffre 1": LocationData("Mount Ordeals", 0x0CC2F7, "Potion", "coffre"),
+    "Mount Ordeals Entrance - Coffre 2": LocationData("Mount Ordeals", 0x0CC2F8, "Potion", "coffre"),
+    "Mount Ordeals Crossing - Coffre 1": LocationData("Mount Ordeals", 0x0CC2F9, "Ether", "coffre"),
+    "Mount Ordeals Crossing - Coffre 2": LocationData("Mount Ordeals", 0x0CC2FA, "Ether", "coffre"),
+    "Mount Ordeals Crossing - Curse augment": LocationData("Mount Ordeals", 0x0CC3EE, "Curse", "coffre"),  # après Scarmiglione
+    "Mount Ordeals Summit - Scarmiglione defeated": LocationData("Mount Ordeals", 0x0CBE10, None, "boss"),    # flag 100
+    "Mount Ordeals Summit - Scarmiglione Z defeated": LocationData("Mount Ordeals", 0x0CBE12, None, "boss"),  # flag 102
+    "Mount Ordeals Entrance - Map completed": LocationData("Mount Ordeals", 0x0CC4FC, "Antidote x5", "carte"),
+    "Mount Ordeals Trail - Map completed": LocationData("Mount Ordeals", 0x0CC4FD, "Hi-Potion x3", "carte"),
+    "Mount Ordeals Crossing - Map completed": LocationData("Mount Ordeals", 0x0CC4FE, "Ether", "carte"),
+    "Mount Ordeals Summit - Map completed": LocationData("Mount Ordeals", 0x0CC4FF, "Red Fang", "carte"),
+
+    # --- Tranche 3 : Baron (retour), Ancient Waterway (d05_xx) -----------------
+    "Baron Inn - Yang gives Baron Key": LocationData("Baron (retour)", 0x0CBE1E, "Baron Key", "evenement"),  # flag 114
+    "Baron Castle - Baigan defeated": LocationData("Baron (retour)", 0x0CBE21, None, "boss"),               # flag 117
+    "Baron Castle - Cagnazzo defeated": LocationData("Baron (retour)", 0x0CBE23, None, "boss"),             # flag 119
+    "Baron Castle - Enterprise": LocationData("Baron (retour)", 0x0CBE28, "Enterprise", "evenement"),      # flag 124
+    "Ancient Waterway B5 - Coffre 1": LocationData("Ancient Waterway", 0x0CC2FC, "1000 Gil", "coffre"),     # d05_00
+    "Ancient Waterway B4 - Coffre 1": LocationData("Ancient Waterway", 0x0CC2FD, "Hi-Potion", "coffre"),    # d05_01
+    "Ancient Waterway B4 - Coffre 2": LocationData("Ancient Waterway", 0x0CC2FE, "Ether", "coffre"),
+    "Ancient Waterway B4 - Coffre 3": LocationData("Ancient Waterway", 0x0CC2FF, "Zeus's Wrath", "coffre"),
+    "Ancient Waterway B3 - Coffre 1": LocationData("Ancient Waterway", 0x0CC300, "Bronze Hourglass", "coffre"),  # d05_02
+    "Ancient Waterway B3 - Coffre 2": LocationData("Ancient Waterway", 0x0CC301, "Spider Silk", "coffre"),
+    "Ancient Waterway B3 - Coffre 3": LocationData("Ancient Waterway", 0x0CC302, "Hermes Sandals", "coffre"),
+    "Ancient Waterway B3 - Tsunami augment": LocationData("Ancient Waterway", 0x0CC3EF, "Tsunami", "coffre"),  # après Cagnazzo
+    "Ancient Waterway B2 - Coffre 1": LocationData("Ancient Waterway", 0x0CC303, "Ether", "coffre"),       # d05_03
+    "Ancient Waterway B1 - Coffre 1": LocationData("Ancient Waterway", 0x0CC304, "Ancient Sword", "coffre"),  # d05_05
+    "Ancient Waterway B4 - Map completed": LocationData("Ancient Waterway", 0x0CC502, "Hi-Potion x3", "carte"),
+    "Ancient Waterway B3 - Map completed": LocationData("Ancient Waterway", 0x0CC503, "Ether", "carte"),
+    "Ancient Waterway B2 - Map completed": LocationData("Ancient Waterway", 0x0CC504, "Remedy x3", "carte"),
+
+    # --- Tranche 4 : Troia (t10, t11, t22), Lodestone Cavern (d06), Tower of Zot (d07) ---
+    "Troia Castle - Edward gives Whisperweed": LocationData("Troia", 0x0CBE2C, "Whisperweed", "evenement"),  # flag 128
+    "Lodestone Cavern - Dark Elf defeated": LocationData("Lodestone Cavern", 0x0CBE34, None, "boss"),         # flag 136
+    "Lodestone Cavern - Earth Crystal": LocationData("Lodestone Cavern", 0x0CBE35, "Earth Crystal", "evenement"),  # flag 137
+    "Tower of Zot - Magus Sisters defeated": LocationData("Tower of Zot", 0x0CBE43, None, "boss"),            # flag 151
+    "Baron Castle - Baron liberated": LocationData("Baron (retour)", 0x0CBE26, None, "evenement"),             # flag 122
+    "Troia - Coffre 1": LocationData("Troia", 0x0CC207, "1000 Gil", "coffre"),
+    "Troia - Coffre 2": LocationData("Troia", 0x0CC208, "Decoy", "coffre"),
+    "Troia - Coffre 3": LocationData("Troia", 0x0CC209, "Ether", "coffre"),
+    "Troia - Coffre 4": LocationData("Troia", 0x0CC20A, "Dry Ether", "coffre"),
+    "Troia Castle B1 West - Coffre 1": LocationData("Troia", 0x0CC211, "Bacchus's Wine", "coffre"),
+    "Troia Castle Vault - Coffre 1": LocationData("Troia", 0x0CC212, "Hi-Potion", "coffre"),
+    "Troia Castle Vault - Coffre 2": LocationData("Troia", 0x0CC213, "Remedy", "coffre"),
+    "Troia Castle Vault - Coffre 3": LocationData("Troia", 0x0CC214, "Ether", "coffre"),
+    "Troia Castle Vault - Coffre 4": LocationData("Troia", 0x0CC215, "Dry Ether", "coffre"),
+    "Troia Castle Vault - Coffre 5": LocationData("Troia", 0x0CC216, "Elixir", "coffre"),
+    "Troia Castle Vault - Coffre 6": LocationData("Troia", 0x0CC217, "Echo Herbs", "coffre"),
+    "Troia Castle Vault - Coffre 7": LocationData("Troia", 0x0CC218, "Great Bow", "coffre"),
+    "Troia Castle Vault - Coffre 8": LocationData("Troia", 0x0CC219, "Fire Arrows", "coffre"),
+    "Troia Castle Vault - Coffre 9": LocationData("Troia", 0x0CC21A, "5000 Gil", "coffre"),
+    "Troia Castle Vault - Coffre 10": LocationData("Troia", 0x0CC21B, "Hi-Potion", "coffre"),
+    "Troia Castle Vault - Coffre 11": LocationData("Troia", 0x0CC21C, "Remedy", "coffre"),
+    "Troia Castle Vault - Coffre 12": LocationData("Troia", 0x0CC21D, "Ether", "coffre"),
+    "Troia Castle Vault - Coffre 13": LocationData("Troia", 0x0CC21E, "Dry Ether", "coffre"),
+    "Troia Castle Vault - Coffre 14": LocationData("Troia", 0x0CC21F, "Silver Apple", "coffre"),
+    "Troia Castle Vault - Coffre 15": LocationData("Troia", 0x0CC220, "Echo Herbs", "coffre"),
+    "Troia Castle Vault - Coffre 16": LocationData("Troia", 0x0CC221, "Ice Arrows", "coffre"),
+    "Troia Castle Vault - Coffre 17": LocationData("Troia", 0x0CC222, "50000 Gil", "coffre"),
+    "Troia Castle Vault - Coffre 18": LocationData("Troia", 0x0CC223, "Lightning Arrows", "coffre"),
+    "Troia Castle B1 East - Coffre 1": LocationData("Troia", 0x0CC224, "Tent", "coffre"),
+    "Troia Castle B1 East - Coffre 2": LocationData("Troia", 0x0CC225, "Tent", "coffre"),
+    "Troia Castle B1 East - Coffre 3": LocationData("Troia", 0x0CC226, "Hi-Potion", "coffre"),
+    "Troia Castle B1 East - Coffre 4": LocationData("Troia", 0x0CC227, "Hi-Potion", "coffre"),
+    "Troia Castle B1 East - Coffre 5": LocationData("Troia", 0x0CC228, "Ether", "coffre"),
+    "Troia Castle B1 East - Coffre 6": LocationData("Troia", 0x0CC229, "Ether", "coffre"),
+    "Troia Castle B1 East - Coffre 7": LocationData("Troia", 0x0CC22A, "Ruby Ring", "coffre"),
+    "Troia Castle B1 East - Coffre 8": LocationData("Troia", 0x0CC22B, "Ruby Ring", "coffre"),
+    "Troia - Coffre 5": LocationData("Troia", 0x0CC243, "Phoenix Down", "coffre"),
+    "Troia - Coffre 6": LocationData("Troia", 0x0CC244, "Hi-Potion", "coffre"),
+    "Troia - Coffre 7": LocationData("Troia", 0x0CC245, "Hi-Potion", "coffre"),
+    "Troia - Coffre 8": LocationData("Troia", 0x0CC246, "Tent", "coffre"),
+    "Chocobo Village - Coffre 1": LocationData("Troia", 0x0CC266, "Gysahl Greens", "coffre"),
+    "Chocobo Village - Coffre 2": LocationData("Troia", 0x0CC267, "Gysahl Greens", "coffre"),
+    "Chocobo Village - Coffre 3": LocationData("Troia", 0x0CC268, "Gysahl Greens", "coffre"),
+    "Lodestone Cavern B1 - Coffre 1": LocationData("Lodestone Cavern", 0x0CC306, "Hi-Potion", "coffre"),
+    "Lodestone Cavern B1 - Coffre 2": LocationData("Lodestone Cavern", 0x0CC307, "Unicorn Horn", "coffre"),
+    "Lodestone Cavern B2 - Coffre 1": LocationData("Lodestone Cavern", 0x0CC308, "Ether", "coffre"),
+    "Lodestone Cavern B2 Room - Coffre 1": LocationData("Lodestone Cavern", 0x0CC309, "2000 Gil", "coffre"),
+    "Lodestone Cavern B2 Room - Coffre 2": LocationData("Lodestone Cavern", 0x0CC30A, "Ether", "coffre"),
+    "Lodestone Cavern B3 Room - Coffre 1": LocationData("Lodestone Cavern", 0x0CC30B, "Hi-Potion", "coffre"),
+    "Lodestone Cavern B3 Room - Coffre 2": LocationData("Lodestone Cavern", 0x0CC30C, "Spider Silk", "coffre"),
+    "Lodestone Cavern B3 Room - Coffre 3": LocationData("Lodestone Cavern", 0x0CC30D, "Bronze Hourglass", "coffre"),
+    "Lodestone Cavern B4 Room - Coffre 1": LocationData("Lodestone Cavern", 0x0CC30E, "Faerie Claws", "coffre"),
+    "Lodestone Cavern B4 - Coffre 1": LocationData("Lodestone Cavern", 0x0CC30F, "Emergency Exit", "coffre"),
+    "Tower of Zot 1F - Coffre 1": LocationData("Tower of Zot", 0x0CC315, "Flame Mail", "coffre"),
+    "Tower of Zot 2F - Coffre 1": LocationData("Tower of Zot", 0x0CC316, "Flame Sword", "coffre"),
+    "Tower of Zot 5F - Coffre 1": LocationData("Tower of Zot", 0x0CC317, "Hell Claws", "coffre"),
+    "Tower of Zot 5F - Coffre 2": LocationData("Tower of Zot", 0x0CC318, "Gaia Hammer", "coffre"),
+    "Tower of Zot 5F - Coffre 3": LocationData("Tower of Zot", 0x0CC319, "Sage's Surplice", "coffre"),
+    "Tower of Zot 5F - Coffre 4": LocationData("Tower of Zot", 0x0CC31A, "Flame Shield", "coffre"),
+    "Lodestone Cavern - Whirlwind augment": LocationData("Lodestone Cavern", 0x0CC3F0, "Whirlwind", "coffre"),
+    "Lodestone Cavern B1 - Map completed": LocationData("Lodestone Cavern", 0x0CC507, "Ether", "carte"),
+    "Lodestone Cavern B2 - Map completed": LocationData("Lodestone Cavern", 0x0CC508, "Vampire Fang x3", "carte"),
+    "Lodestone Cavern B3 - Map completed": LocationData("Lodestone Cavern", 0x0CC50A, "Silent Bell x3", "carte"),
+    "Lodestone Cavern B4 - Map completed": LocationData("Lodestone Cavern", 0x0CC50E, "Dry Ether", "carte"),
+    "Tower of Zot 1F - Map completed": LocationData("Tower of Zot", 0x0CC511, "Zeus's Wrath x5", "carte"),
+    "Tower of Zot 2F - Map completed": LocationData("Tower of Zot", 0x0CC512, "Heavenly Wrath x3", "carte"),
+    "Tower of Zot 3F - Map completed": LocationData("Tower of Zot", 0x0CC513, "Blue Fang", "carte"),
+    "Tower of Zot 4F - Map completed": LocationData("Tower of Zot", 0x0CC514, "Elixir", "carte"),
+    "Tower of Zot 5F - Map completed": LocationData("Tower of Zot", 0x0CC516, "Bronze Hourglass x3", "carte"),
+
+    # --- Tranche 5 : Magma Stone (Baron, après Valvalis), Agart (t07) ---------------
+    "Baron Castle - Kain gives Magma Stone": LocationData("Tower of Zot", 0x0CBE4C, "Magma Stone", "evenement"),  # flag 160, chambre de Cecil après Valvalis
+    "Agart - Coffre 1": LocationData("Agart", 0x0CC1E4, "Antarctic Wind", "coffre"),
+    "Agart - Coffre 2": LocationData("Agart", 0x0CC1E5, "Potion", "coffre"),
+    "Agart - Coffre 3": LocationData("Agart", 0x0CC26A, "Hi-Potion", "coffre"),
+    "Agart - Coffre 4": LocationData("Agart", 0x0CC26B, "Gaia Drum", "coffre"),
+    "Agart - Coffre 5": LocationData("Agart", 0x0CC26C, "Phoenix Down", "coffre"),
+    "Agart - Coffre 6": LocationData("Agart", 0x0CC26D, "Phoenix Down", "coffre"),
+    "Agart - Coffre 7": LocationData("Agart", 0x0CC26E, "Cottage", "coffre"),
+    "Tower of Zot - Valvalis defeated": LocationData("Tower of Zot", 0x0CBE49, None, "boss"),             # flag 157
+    # Monde souterrain : château des nains (t12)
+    "Dwarf Castle - Calbrena defeated": LocationData("Dwarf Castle", 0x0CBE5D, None, "boss"),             # flag 177
+    "Dwarf Castle - Giott gives Draw Attacks": LocationData("Dwarf Castle", 0x0CBE5E, "Draw Attacks", "evenement"),  # flag 178, après Golbez
+    "Dwarf Castle - Coffre 1": LocationData("Dwarf Castle", 0x0CC22F, "Dwarven Axe", "coffre"),          # t12_04
+    "Dwarf Castle - Coffre 2": LocationData("Dwarf Castle", 0x0CC230, "Bacchus's Wine", "coffre"),       # t12_05
+    "Dwarf Castle - Coffre 3": LocationData("Dwarf Castle", 0x0CC231, "Ether", "coffre"),                # t12_06
+    "Dwarf Castle - Coffre 4": LocationData("Dwarf Castle", 0x0CC232, "Silver Hourglass", "coffre"),
+    "Dwarf Castle - Coffre 5": LocationData("Dwarf Castle", 0x0CC233, "Power Armlet", "coffre"),
+    "Dwarf Castle - Coffre 6": LocationData("Dwarf Castle", 0x0CC234, "Elixir", "coffre"),
+    "Dwarf Castle - Coffre 7": LocationData("Dwarf Castle", 0x0CC235, "Bacchus's Wine", "coffre"),       # t12_08
+    "Dwarf Castle - Coffre 8": LocationData("Dwarf Castle", 0x0CC236, "Elixir", "coffre"),               # t12_09
+    "Dwarf Castle - Coffre 9": LocationData("Dwarf Castle", 0x0CC237, "Ether", "coffre"),
+    "Dwarf Castle - Coffre 10": LocationData("Dwarf Castle", 0x0CC238, "Hi-Potion", "coffre"),
+    "Dwarf Castle - Coffre 11": LocationData("Dwarf Castle", 0x0CC239, "Black Belt Gi", "coffre"),
+    "Dwarf Castle - Coffre 12": LocationData("Dwarf Castle", 0x0CC23A, "Cottage", "coffre"),             # t12_12
+    "Dwarf Castle - Coffre 13": LocationData("Dwarf Castle", 0x0CC23B, "Cottage", "coffre"),
+    "Dwarf Castle - Coffre 14": LocationData("Dwarf Castle", 0x0CC23C, "Cottage", "coffre"),
+    "Dwarf Castle - Coffre 15": LocationData("Dwarf Castle", 0x0CC23D, "Gysahl Greens", "coffre"),       # t12_13
+    "Dwarf Castle - Coffre 16": LocationData("Dwarf Castle", 0x0CC23E, "Gysahl Greens", "coffre"),
+    "Dwarf Castle - Coffre 17": LocationData("Dwarf Castle", 0x0CC23F, "Gysahl Greens", "coffre"),
+    "Dwarf Castle - Coffre 18": LocationData("Dwarf Castle", 0x0CC241, "5000 Gil", "coffre"),            # t12_30
+    "Underworld - Tank base chest": LocationData("Underworld", 0x0CC24F, "Bomb Fragment", "coffre"),     # t12_10
+    # Tranche 6 : tour de Babil, partie souterraine (d08_00 à d08_14)
+    "Tower of Babil B13 - Coffre 1": LocationData("Tower of Babil", 0x0CC31F, "Emergency Exit", "coffre"),  # d08_00
+    "Tower of Babil B13 - Coffre 2": LocationData("Tower of Babil", 0x0CC320, "Hi-Potion", "coffre"),
+    "Tower of Babil B13 - Coffre 3": LocationData("Tower of Babil", 0x0CC321, "Ether", "coffre"),
+    "Tower of Babil B12 - Coffre 1": LocationData("Tower of Babil", 0x0CC322, "Green Beret", "coffre"),     # d08_01
+    "Tower of Babil B11 - Coffre 1": LocationData("Tower of Babil", 0x0CC323, "Cat Claws", "coffre"),       # d08_02
+    "Tower of Babil B11 - Coffre 2": LocationData("Tower of Babil", 0x0CC324, "Hi-Potion", "coffre"),
+    "Tower of Babil B11 - Coffre 3": LocationData("Tower of Babil", 0x0CC325, "Phoenix Down", "coffre"),
+    "Tower of Babil Lower - Coffre 1": LocationData("Tower of Babil", 0x0CC326, "Icebrand", "coffre"),      # d08_03
+    "Tower of Babil Lower - Coffre 2": LocationData("Tower of Babil", 0x0CC327, "Ice Lance", "coffre"),     # d08_04
+    "Tower of Babil B10 - Coffre 1": LocationData("Tower of Babil", 0x0CC328, "Killer Bow", "coffre"),      # d08_05
+    "Tower of Babil B10 - Coffre 2": LocationData("Tower of Babil", 0x0CC329, "Antarctic Wind", "coffre"),
+    "Tower of Babil Lower - Coffre 3": LocationData("Tower of Babil", 0x0CC32A, "Ice Shield", "coffre"),    # d08_06
+    "Tower of Babil Lower - Coffre 4": LocationData("Tower of Babil", 0x0CC32B, "Ice Armor", "coffre"),     # d08_08
+    "Tower of Babil B9 - Coffre 1": LocationData("Tower of Babil", 0x0CC32C, "Arctic Wind", "coffre"),      # d08_10
+    "Tower of Babil B9 - Coffre 2": LocationData("Tower of Babil", 0x0CC32D, "Hi-Potion", "coffre"),
+    "Tower of Babil B8 - Coffre 1": LocationData("Tower of Babil", 0x0CC32E, "Hi-Potion", "coffre"),        # d08_11
+    "Tower of Babil B7 - Coffre 1": LocationData("Tower of Babil", 0x0CC32F, "Dry Ether", "coffre"),        # d08_12
+    "Tower of Babil B13 - Map completed": LocationData("Tower of Babil", 0x0CC519, "Antarctic Wind x5", "carte"),
+    "Tower of Babil B12 - Map completed": LocationData("Tower of Babil", 0x0CC51A, "Arctic Wind x3", "carte"),
+    "Tower of Babil B11 - Map completed": LocationData("Tower of Babil", 0x0CC51B, "White Fang", "carte"),
+    "Tower of Babil B10 - Map completed": LocationData("Tower of Babil", 0x0CC51E, "Hi-Potion x5", "carte"),
+    "Tower of Babil B9 - Map completed": LocationData("Tower of Babil", 0x0CC523, "Remedy x5", "carte"),
+    "Tower of Babil B8 - Map completed": LocationData("Tower of Babil", 0x0CC525, "Ether x2", "carte"),
+    "Tower of Babil B7 - Map completed": LocationData("Tower of Babil", 0x0CC526, "Elixir", "carte"),
+    "Tower of Babil - Dr. Lugae defeated": LocationData("Tower of Babil", 0x0CBE67, None, "boss"),          # flag 187
+    "Tower of Babil - Tower Key": LocationData("Tower of Babil", 0x0CBE68, "Tower Key", "evenement"),       # flag 188
+
+    # --- Ancien objectif de la tranche 1, devenu une location ------------------
+    "Rosa soignee": LocationData("Kaipo (retour)", 0x0CBDDD, None, "evenement"),                  # flag 49
+    # --- Ancien objectif de la tranche 2 -----------------------------------------
+    "Mount Ordeals - Cecil becomes Paladin": LocationData("Mount Ordeals", 0x0CBE17, None, "evenement"),  # flag 107
+
 
 }
 
-# Objectif : la scène de soin de Rosa est terminée.
-GOAL_FLAG = 0x0CBDDD
+# Objectif : canons de la tour de Babil détruits (flag 190), dans la région GOAL_REGION.
+GOAL_FLAG = 0x0CBE6A
+GOAL_REGION = "Tower of Babil"
 
 # --------------------------------------------------------------------------- #
 # Adresses mémoire utiles au client (étape 6)                                 #

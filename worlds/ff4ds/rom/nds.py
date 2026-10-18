@@ -4,7 +4,8 @@ Remplace ndspy pour le patch : Archipelago ne fournit pas ndspy, et le patch doi
 pouvoir s'appliquer sur la machine du joueur avec Python seul.
 
 Seuls les fichiers sont modifiables. Un fichier qui garde sa taille ou rétrécit reste
-à sa place ; un fichier qui grandit est déplacé dans l'espace libre à la fin de la ROM.
+à sa place ; un fichier qui grandit est déplacé dans l'espace libre à la fin de la ROM
+(s'il y est déjà, il grandit sur place : sinon chaque modification laisserait une copie perdue).
 """
 from __future__ import annotations
 
@@ -77,9 +78,11 @@ class NDSRom:
         file_id = self.names[name]
         start, end = self._bounds(file_id)
         if len(content) > end - start:
-            # Le fichier grandit : on le place après la fin des données utilisées.
+            # Le fichier grandit : on le place après la fin des données utilisées
+            # (ou il reste en place s'il est déjà le dernier).
             used = struct.unpack_from("<I", self.data, USED_SIZE)[0]
-            start = (used + FILE_ALIGN - 1) // FILE_ALIGN * FILE_ALIGN
+            if end != used:
+                start = (used + FILE_ALIGN - 1) // FILE_ALIGN * FILE_ALIGN
             capacity = 0x20000 << self.data[CAPACITY_SHIFT]
             if start + len(content) > capacity:
                 raise ValueError(f"Plus de place dans la ROM pour {name}")

@@ -26,7 +26,7 @@ import worlds._bizhawk as bizhawk
 from worlds._bizhawk.client import BizHawkClient
 
 from .data import (CHEST_FLAG_BASE, GIL_BOX_TYPE, GOAL_FLAG, ITEM_BOX_TYPE, ITEMS, LOCATIONS, RAM,
-                   ItemData)
+                   VEHICLES, ItemData)
 from .inventory import SlotList
 from .names import PLACEHOLDERS, Placeholder, find_msda, parse_entries, read_string, to_game_text
 from .spells import ITEM_SPELLS, SPELL_BLOCK_BASE, SPELL_BLOCK_SIZE, add_spells, spells_from_items
@@ -86,7 +86,7 @@ GIL_CHEST_DEFAULT = ItemData(0x1389)
 IN_GAME_BY_FLAG = {
     data.flag: (GIL_CHEST_DEFAULT if data.category == "coffre" and ITEMS[data.vanilla].game_id == 0
                 else ITEMS[data.vanilla])
-    for data in LOCATIONS.values() if data.vanilla
+    for data in LOCATIONS.values() if data.vanilla and not ITEMS[data.vanilla].vehicle   # véhicules : plus donnés par la ROM
 }
 ITEM_BY_AP_ID = {data.ap_id: (name, data) for name, data in ITEMS.items()}
 KEY_ITEM_MIN_ID = 0x2329       # à partir de 9001 : objets clés et augments
@@ -171,6 +171,8 @@ class FF4DSClient(BizHawkClient):
         if entry is None:
             return None
         data = entry[1]
+        if data.vehicle:
+            return None
         if chest.obj_type == GIL_BOX_TYPE and data.game_id == 0:
             return data
         if chest.obj_type == ITEM_BOX_TYPE and data.game_id != 0 and not is_key_item(data):
@@ -320,6 +322,30 @@ class FF4DSClient(BizHawkClient):
             await bizhawk.guarded_write(ctx.bizhawk_ctx, [(SPELLS_START, bytes(data), MAIN_RAM)],
                                         [(SPELLS_START, raw, MAIN_RAM), (RAM["event_running"], [0], MAIN_RAM)])
 
+    async def sync_vehicles(self, ctx: BizHawkClientContext, delivered_count: int, map_raw: bytes) -> None:
+        """Véhicules reçus : flag « disponible » + position, écrits seulement hors de la carte du monde
+        (le véhicule est créé au chargement de la carte du monde). Rien n'est réécrit si le flag est
+        déjà actif : le joueur a pu déplacer le véhicule."""
+        name = map_raw[4:12].split(b"\0")[0]
+        if not name or name.startswith(b"f"):
+            return
+        wanted = {ITEM_BY_AP_ID[item.item][1].vehicle for item in ctx.items_received[:delivered_count]
+                  if item.item in ITEM_BY_AP_ID and ITEM_BY_AP_ID[item.item][1].vehicle}
+        for number in sorted(wanted):
+            vehicle = VEHICLES[number]
+            flag = (await bizhawk.read(ctx.bizhawk_ctx, [(vehicle.flag, 1, MAIN_RAM)]))[0]
+            if flag[0]:
+                continue
+            x, y, z = vehicle.coords
+            writes = [(vehicle.position, struct.pack("<i", x), MAIN_RAM),
+                      (vehicle.position + 8, struct.pack("<i", z), MAIN_RAM),
+                      (vehicle.flag, [1], MAIN_RAM)]
+            if y is not None:
+                writes.append((vehicle.position + 4, struct.pack("<i", y), MAIN_RAM))
+            await bizhawk.guarded_write(ctx.bizhawk_ctx, writes,
+                                        [(vehicle.flag, [0], MAIN_RAM), (OBJECT_LIST + 4, map_raw[4:12], MAIN_RAM),
+                                         (RAM["event_running"], [0], MAIN_RAM)])
+
     async def game_watcher(self, ctx: BizHawkClientContext) -> None:
         if ctx.server is None or ctx.slot is None:
             return
@@ -409,6 +435,7 @@ class FF4DSClient(BizHawkClient):
         received = struct.unpack_from("<H", block, off(RECEIVED_COUNTER))[0]
         try:
             await self.sync_spells(ctx, received)
+            await self.sync_vehicles(ctx, received, map_raw)
         except bizhawk.RequestFailedError:
             return
         to_deliver = ctx.items_received[received:]
@@ -448,6 +475,11 @@ class FF4DSClient(BizHawkClient):
                 delivered += 1
                 continue
             name, data = entry
+            if data.vehicle:
+                # Véhicule : posé par sync_vehicles (hors de la carte du monde), une fois compté comme livré.
+                delivered += 1
+                messages.append(f"Reçu : {name} ({sender})")
+                continue
             if data.game_id == 0:
                 gil = min(MAX_GIL, gil + data.quantity)
             elif is_key_item(data):
