@@ -968,13 +968,15 @@ def apply_patches(rom, party=None, departures="vanilla", full_party="replace_old
     #   À la place, tout est fait au puits : fondu, Magma Stone retirée, flags 909, 164, 166, 718, 170 à 173,
     #   719, 700, écran rouvert. Dans le monde souterrain, plus aucune scène : l'Enterprise reste utilisable.
     block = fade_out + struct.pack("<HHB", 0x73, 9012, 1)
-    block += b"".join(flag_on(n) for n in (909, 164, 166, 718, 170, 171, 172, 173, 719, 700)) + fade_in + end
+    #   Flag 700 retiré (20/10/2026) : posé par les cinématiques pendant qu'elles jouent ; resté activé, la
+    #   cinématique suivante (Rubicante) se jouait en mode « théâtre » (retour au menu des cinématiques).
+    block += b"".join(flag_on(n) for n in (909, 164, 166, 718, 170, 171, 172, 173, 719)) + fade_in + end
     patch_script(rom, "t07_00", 0x00A89, goto(append_script(rom, "t07_00", block)), expected=bytes.fromhex("25 00 02 00"))
     patch_script(rom, "t07_01", 0x0019F, goto(append_script(rom, "t07_01", block)), expected=bytes.fromhex("25 00 02 00"))
     #   Z3 : deux Enterprise dans le monde souterrain : f01 segment 1 (001E0, flag 171 sans 196) affiche
     #   l'épave posée au sol (acteur 21, op028(21, 1) + op0C2). Jamais affichée : aller_a(00211).
     #   + flag 447 désactivé (musique coupée à bord, voir X1), pour les parties où il était resté activé.
-    clear447 = struct.pack("<HHH", 0x15, 0, 447)
+    clear447 = struct.pack("<HHH", 0x15, 0, 447) + struct.pack("<HHH", 0x15, 0, 700)   # + 700 (voir Z2)
     patch_script(rom, "f01", 0x001E0, goto(append_script(rom, "f01", clear447 + goto(0x00211))) + NOP * 2,
                  expected=bytes.fromhex("0c 00 00 00 c4 00 11 02 00 00"))
     #   Même chose sur la carte du monde de la surface (f00 segment 1, 002E4 : op015(0, 445)).
@@ -1048,25 +1050,167 @@ def apply_patches(rom, party=None, departures="vanilla", full_party="replace_old
     block = BEGIN_EVENT + fade_out + flag_on(189) + battle(958, 15, 0, 0) + end
     patch_script(rom, "d08_21", 0x00144, goto(append_script(rom, "d08_21", block)), expected=BEGIN_EVENT)
     block = BEGIN_EVENT + fade_out + leave("Baron Character")
-    block += b"".join(flag_on(n) for n in (190, 6, 720, 700, 192, 193, 196, 197, 198, 199, 721))
+    block += b"".join(flag_on(n) for n in (190, 6, 720, 192, 193, 196, 197, 198, 199, 721))   # pas 700 (Z2)
     block += struct.pack("<H", 0x43) + b"d08_10\0" + struct.pack("<IIIIIH", 0, 0, (-139264) & 0xFFFFFFFF, 0, 0, 0) + end
     patch_script(rom, "d08_21", 0x005A8, goto(append_script(rom, "d08_21", block)), expected=BEGIN_EVENT)
     #   AB3 : crochet de l'Enterprise (château de Baron, t00_00 segment 5, après op009(10, 10) : un ingénieur) :
     #   d'origine, scène, flags 202, 444, op043 vers t19_00 (scène du crochet : flag 903 = Enterprise avec
     #   crochet, véhicule 4, puis op0A7('f00', devant Baron, …, 4)). À la place : fondu, flags 202, 203, 444, 903,
     #   op0A7 (copié de t19_00 00BAB) : on repart directement à bord de l'Enterprise avec crochet.
-    block = fade_out + b"".join(flag_on(n) for n in (202, 203, 444, 903))
-    #   Essai 1 : plus de musique à bord (flag 444 : la carte du monde ne relance pas la sienne). Essai 2 :
-    #   musique de l'Enterprise (30) lancée avant op0A7, comme à l'origine (copiée de t19_00 00B8C).
-    block += load_script(rom, "t19_00")[0x00B8C:0x00BC7] + end
+    #   Partie Archipelago (vehicle_items) : le crochet est le 2e exemplaire de l'objet Enterprise (posé par le
+    #   client) ; l'ingénieur ne fait qu'activer les flags 202, 203 (location).
+    if vehicle_items:
+        block = fade_out + flag_on(202) + flag_on(203) + fade_in + end
+    else:
+        block = fade_out + b"".join(flag_on(n) for n in (202, 203, 444, 903))
+        #   Essai 1 : plus de musique à bord (flag 444 : la carte du monde ne relance pas la sienne). Essai 2 :
+        #   musique de l'Enterprise (30) lancée avant op0A7, comme à l'origine (copiée de t19_00 00B8C).
+        block += load_script(rom, "t19_00")[0x00B8C:0x00BC7] + end
     patch_script(rom, "t00_00", 0x02316, goto(append_script(rom, "t00_00", block)), expected=bytes.fromhex("25 00 02 00"))
     #   AB4 : trou d'Agart : d'origine, refermé par Cid (f00 segment 1 : flag 198 -> op028(23, 1), le
     #   couvercle). Le test du flag 198 est retiré : le trou reste ouvert.
     patch_script(rom, "f00", 0x0043F, NOP * 5, expected=bytes.fromhex("0c 00 00 00 c6 00"))
+    #   AB5 : tour de Babil toujours accessible depuis le monde souterrain : d'origine, la sortie j002 de f01
+    #   (vers d08_00) n'est plus définie avec le flag 253 (grotte scellée, plus tard). Test retiré.
+    patch_script(rom, "f01", 0x00311, NOP * 5, expected=bytes.fromhex("0c 00 00 00 fd 00 6f 03 00 00"))
+
+    # Étape AC : tranche 6, grotte d'Eblan et tour de Babil (partie haute, d08_15 à d08_20, d08_22, d08_23).
+    #   AC1 : Edge contre Rubicante (d09_05 segment 3, zone 0070D) : d'origine, scène, Edge rejoint (op068(12),
+    #   op102(12, 35)), combat d'Edge seul (op042(934), scénarisé), retour de l'équipe, flags 205, 206.
+    #   À la place : personnage de l'emplacement « Eblan Character », flags 205, 206 (combat scénarisé sauté).
+    #   Essai 1 : jeu figé en parlant ensuite à Rubicante, resté affiché (acteur 20, sans dialogue). Essai 2 :
+    #   Rubicante retiré (op02B(20, 0)), comme à la fin de la scène d'origine (016EB). Essai 3 : Edge restait
+    #   (acteur 61, même problème) : retiré aussi.
+    block = BEGIN_EVENT + fade_out + join("Eblan Character") + flag_on(205) + flag_on(206)
+    block += struct.pack("<HHB", 0x2B, 20, 0) + struct.pack("<HHB", 0x2B, 61, 0) + fade_in + end
+    patch_script(rom, "d09_05", 0x0070D, goto(append_script(rom, "d09_05", block)), expected=BEGIN_EVENT)
+    #   AC2 : entrée de la tour (d08_15 segment 3) : à chaque passage, scène du ninja qui fait passer l'équipe
+    #   (vers l'intérieur 0023B, flag 209 ; vers l'extérieur 0054E). À la place : fondu et joueur replacé
+    #   de l'autre côté (copiés de 004E9 et 006FD).
+    d08_15 = load_script(rom, "d08_15")
+    block = BEGIN_EVENT + fade_out + d08_15[0x004E9:0x00522] + flag_on(209) + fade_in + END_EVENT + goto(461)
+    patch_script(rom, "d08_15", 0x0023B, goto(append_script(rom, "d08_15", block)), expected=BEGIN_EVENT)
+    block = BEGIN_EVENT + fade_out + d08_15[0x006FD:0x00736] + fade_in + END_EVENT + goto(461)
+    patch_script(rom, "d08_15", 0x0054E, goto(append_script(rom, "d08_15", block)), expected=BEGIN_EVENT)
+    #   AC3 : parents d'Edge et Rubicante (d08_20, B5) : zone 00330 -> scène, flag 210, op042(935) ; après
+    #   (fonction 00808) : ninjutsu d'Edge (op17C(12, 4902 / 4903)), flags 211, 212, cinématique op151(18)
+    #   (Rubicante soigne l'équipe, combat op042(936)) ; après (fonction 011B2) : scène, flag 213.
+    #   À la place : combats seuls (Rubicante : soins op1AE(0, 1) puis op042(936, 15, 0, 0)), flag 213 après.
+    block = BEGIN_EVENT + fade_out + flag_on(210) + battle(935, 15, 0, 0) + end
+    patch_script(rom, "d08_20", 0x00330, goto(append_script(rom, "d08_20", block)), expected=BEGIN_EVENT)
+    #   Essai 11 : après la cinématique, menu des cinématiques au lieu du combat : flag 700 resté activé par
+    #   nos sauts (Z2, AB2). Flag 700 désactivé juste avant la cinématique (et sur les cartes du monde).
+    d08_20 = load_script(rom, "d08_20")
+    block = BEGIN_EVENT + struct.pack("<HHH", 0x15, 0, 700) + d08_20[0x00812:0x00863]
+    patch_script(rom, "d08_20", 0x00808, goto(append_script(rom, "d08_20", block)), expected=BEGIN_EVENT)
+    #   Rubicante (fonction 00808) : essais 1 à 9 (combat lancé directement, musique 39 / 29 lancée avant,
+    #   musique 29 mise dans les données du combat, avec ou sans op1AE) : combat silencieux, ou sans fanfare de
+    #   victoire. Essai 10 (actuel, idée du joueur) : fonction d'origine gardée (ninjutsu op17C(12, …), flags
+    #   211, 212, cinématique op151(18) : Rubicante soigne l'équipe et le combat suit, avec la musique de la
+    #   cinématique). La cinématique se passe avec Start, comme dans le jeu d'origine.
+    #   Essai 1 : Rubicante restait affiché (acteur 22, jeu figé en lui parlant) et plus de musique de la tour.
+    #   Essai 2 : Rubicante retiré (op02B(22, 0), comme 01572) et musique de la carte relancée (op0CC(33), 0212C).
+    d08_20 = load_script(rom, "d08_20")
+    block = BEGIN_EVENT + fade_out + flag_on(213) + struct.pack("<HHB", 0x2B, 22, 0) + d08_20[0x0212C:0x02136]
+    block += fade_in + end
+    patch_script(rom, "d08_20", 0x011B2, goto(append_script(rom, "d08_20", block)), expected=BEGIN_EVENT)
+    #   AC4 : piège de Golbez (d08_23, zones 00194 et 00277, flag 213 activé et 214 non) : scène, flag 214,
+    #   chute vers d08_14 (op043). Puis d08_14 segment 4 (00F95 / 0142D, flag 214 sans 215) : scène, flag 215,
+    #   joueur replacé, musique 33. À la place : chute directe ; à l'arrivée, flag 215 + replacement (013B0).
+    d08_23 = load_script(rom, "d08_23")
+    for position, jump in ((0x00194, 0x00212), (0x00277, 0x003EC)):
+        block = BEGIN_EVENT + fade_out + flag_on(214) + d08_23[jump:jump + 0x1F] + end
+        patch_script(rom, "d08_23", position, goto(append_script(rom, "d08_23", block)), expected=BEGIN_EVENT)
+    #   Essai 2 : plus de bruitages en combat ensuite : la copie contenait op0CA (libère la banque de sons
+    #   chargée par la scène d'origine avec op0C9, ici celle des combats). op0CA retiré (013E9).
+    #   Essai 3 (20/10/2026) : le hangar du Faucon (d08_22) reste noir en y entrant par la porte du B8, et son
+    #   segment 3 ne se lance pas (flags 215 = 1, 216 = 0, aucun événement en cours). À la place, la chute mène
+    #   directement au Faucon : flag 215, puis fin d'origine du hangar (flags 216, 444, 904, op0A7 vers f01 à
+    #   bord du Faucon, copiés de d08_22 008AE) ; la courte scène du Faucon qui sort du volcan (f01) est gardée.
+    #   Essai 4 : la scène de f01 (segment 5) restait bloquée (événement en cours, écran du haut noir, joueur
+    #   à pied loin du Faucon). Elle est court-circuitée (flag 217) : le Faucon est placé (op0B3 comme f01
+    #   02862), musique 30 (copiée de t19_00 00B8C) et sortie op0A7 à bord du Faucon, à sa position.
+    #   Partie Archipelago (vehicle_items) : le Faucon est un objet (location : flag 217). Sans lui (flag 904),
+    #   le joueur repart à bord de l'Enterprise avec crochet (véhicule 4), posée au même endroit.
+    #   Ce bloc remplace la scène du hangar (AC5, d08_22 segment 1, au chargement, flag 215 sans 216).
+    def falcon_arrival(map_name, extra=b""):
+        x, y, z = -1228800, 102400, -2682880
+        music = load_script(rom, "t19_00")[0x00B8C:0x00BAB]
+
+        def board(vehicle):
+            place = struct.pack("<HIiiiIII", 0xB3, vehicle, x, y, z, 0, 0, 0)
+            return (place + music
+                    + struct.pack("<H", 0xA7) + b"f01\0" + struct.pack("<iiiIIH", x, y, z, 0, vehicle, 0))
+
+        head = BEGIN_EVENT + flag_on(215) + flag_on(216) + flag_on(217) + flag_on(444) + extra
+        if not vehicle_items:
+            return append_script(rom, map_name, head + flag_on(904) + board(5) + end)
+        base = append_position(rom, map_name)
+        falcon = board(5) + end
+        jump = base + len(head) + 10
+        block = head + struct.pack("<HHHI", 0x0C, 0, 904, jump + len(board(4) + end)) + board(4) + end + falcon
+        assert append_script(rom, map_name, block) == base
+        return base
+
+    #   Essai 5 (21/10/2026) : la chute ne mène plus directement au Faucon (B8 et B7 restaient inaccessibles :
+    #   2 coffres et 2 cartes). Atterrissage d'origine sans la scène (flag 215, écran rouvert), puis à pied
+    #   B7 -> B8 -> porte du hangar : falcon_arrival (vérifié en émulateur par la porte j003 de d08_11).
+    #   Essai 6 : on atterrissait au centre de la salle ; d'origine, la fin de scène replace le joueur à gauche
+    #   (op105(0, -827392, 0, -131072), op09F, op02C, op087 : 013B0-013E9) et relance la musique 33 (013EF,
+    #   sans l'op0CA de 013E9 qui libère la banque de sons des combats).
+    #   Écrans noirs chez le joueur (hangar, puis après les combats) avec des savestates faites sur d'anciennes
+    #   ROM ; essai 7 (porte du hangar vers f01) et retour à la chute -> Faucon abandonnés (21/10/2026) : retour
+    #   à l'essai 6, à tester depuis une sauvegarde en jeu.
+    d08_14 = load_script(rom, "d08_14")
+    fallen = append_script(rom, "d08_14", BEGIN_EVENT + flag_on(215) + d08_14[0x013B0:0x013E9]
+                           + d08_14[0x013EF:0x013F9] + fade_in + end)
+    for position in (0x00F95, 0x0142D):
+        patch_script(rom, "d08_14", position, goto(fallen), expected=BEGIN_EVENT)
+    patch_script(rom, "d08_22", 0x00150, goto(falcon_arrival("d08_22")), expected=BEGIN_EVENT)
+
+    #   AD0 : Giott après la chute (t12_02 segment 3, zone devant le trône, flag 217 activé et 220 non) :
+    #   d'origine, scène (Luca donne son collier, clé de la grotte scellée), op044(9014), flag 220.
+    #   À la place : collier (location AP, flag 220), écran rouvert. Deux variantes (début 01F9C et 02B64).
+    block = BEGIN_EVENT + fade_out + struct.pack("<HHB", 0x44, 9014, 1) + flag_on(220) + fade_in + end
+    luca = append_script(rom, "t12_02", block)
+    for position in (0x01FD6, 0x02B9E):
+        patch_script(rom, "t12_02", position, goto(luca), expected=BEGIN_EVENT)
+
+    #   AD : Cid à l'infirmerie du château des nains (t12_11 segment 1, zone devant son lit, flag 199 activé et
+    #   222 non) : d'origine, longue scène (Cid améliore le Faucon pour la lave, nuit, lettre), augments
+    #   Adrenaline, Upgrade, Analyze (op044(9115 / 9114 / 9113)), flags 454, 902 (le Faucon traverse la lave,
+    #   vérifié en émulateur : 902 seul suffit), 221, 222. Cid n'est là qu'après la chute (seg. 0 : flag 217).
+    #   Upgrade et Analyze ne sont rendus que selon les augments confiés à Cid (op1C4(11, …)) : seul Adrenaline
+    #   est gardé (21/10/2026). À la place : si flag 217, Adrenaline, flags 221, 222, 454,
+    #   902 seulement hors Archipelago (sinon : 2e exemplaire de l'objet Faucon).
+    block = (struct.pack("<HHH", 0x07, 0, 217) + BEGIN_EVENT + fade_out
+             + struct.pack("<HHB", 0x44, 9115, 1)
+             + flag_on(221) + flag_on(222) + flag_on(454)
+             + (b"" if vehicle_items else flag_on(902)) + fade_in + end)
+    cid = append_script(rom, "t12_11", block)
+    for position in (0x002A8, 0x02047, 0x02A25):
+        patch_script(rom, "t12_11", position, goto(cid), expected=BEGIN_EVENT)
 
     # (Essai retiré : ne plus placer l'éboulement du Titan sur la carte du monde (f00, 003D2).
     #  Les rochers disparaissaient mais une barrière invisible restait : la collision fait partie
     #  du décor. Le village reste accessible par la Grotte de la Brume.)
+
+
+# --------------------------------------------------------------------------- #
+# Musique des combats (monster_party_table.bbd.lz)                             #
+# --------------------------------------------------------------------------- #
+PARTY_TABLE_FILE = "monster_party_table.bbd.lz"
+
+
+def set_battle_music(rom, group, music):
+    """Chaque groupe de monstres commence par 8 octets FF, puis [décor u16][musique u16][groupe u16] ;
+    musique = numéro de music_player.bbd (8 combat, 13 boss, 29 archidémons, 65535 = garder la musique)."""
+    data = bytearray(lz10(bytes(rom.getFileByName(PARTY_TABLE_FILE))))
+    found = [i for i in range(8, len(data) - 6, 2)
+             if data[i - 8:i] == b"\xff" * 8 and struct.unpack_from("<H", data, i + 4)[0] == group]
+    assert len(found) == 1, (group, found)
+    struct.pack_into("<H", data, found[0] + 2, music)
+    rom.setFileByName(PARTY_TABLE_FILE, lz10_compress(bytes(data)))
 
 
 # --------------------------------------------------------------------------- #

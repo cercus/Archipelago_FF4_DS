@@ -57,6 +57,7 @@ SLOTS: dict[str, Slot] = {
     "Zot Character 1": Slot("Kain", 32, 0),       # sommet de la tour de Zott
     "Zot Character 2": Slot("Rosa", 26, 0),
     "Dwarf Castle Character": Slot("Rydia", 30, 0),   # combat contre Golbez (Rydia adulte, perso 5)
+    "Eblan Character": Slot("Edge", 35, 0),           # grotte d'Eblan, après Rubicante (d09_05)
 }
 GOAL_SLOT = None       # objectif (Golbez au château des nains) après toutes les arrivées
 PARTY_MAX = 5          # Cecil compris
@@ -89,6 +90,7 @@ STORY = [
     ("leave", "Cid Character"),          # château des nains : Cid part réparer l'Enterprise
     ("join", "Dwarf Castle Character"),
     ("leave", "Baron Character"),        # tour de Babil : Yang reste aux canons
+    ("join", "Eblan Character"),
 ]
 
 

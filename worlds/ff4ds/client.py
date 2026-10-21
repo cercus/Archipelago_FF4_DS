@@ -26,7 +26,7 @@ import worlds._bizhawk as bizhawk
 from worlds._bizhawk.client import BizHawkClient
 
 from .data import (CHEST_FLAG_BASE, GIL_BOX_TYPE, GOAL_FLAG, ITEM_BOX_TYPE, ITEMS, LOCATIONS, RAM,
-                   VEHICLES, ItemData)
+                   VEHICLES, PROGRESSIVE_VEHICLES, ItemData)
 from .inventory import SlotList
 from .names import PLACEHOLDERS, Placeholder, find_msda, parse_entries, read_string, to_game_text
 from .spells import ITEM_SPELLS, SPELL_BLOCK_BASE, SPELL_BLOCK_SIZE, add_spells, spells_from_items
@@ -329,14 +329,31 @@ class FF4DSClient(BizHawkClient):
         name = map_raw[4:12].split(b"\0")[0]
         if not name or name.startswith(b"f"):
             return
-        wanted = {ITEM_BY_AP_ID[item.item][1].vehicle for item in ctx.items_received[:delivered_count]
-                  if item.item in ITEM_BY_AP_ID and ITEM_BY_AP_ID[item.item][1].vehicle}
+        counts: dict[int, int] = {}
+        for item in ctx.items_received[:delivered_count]:
+            if item.item in ITEM_BY_AP_ID and ITEM_BY_AP_ID[item.item][1].vehicle:
+                number = ITEM_BY_AP_ID[item.item][1].vehicle
+                counts[number] = counts.get(number, 0) + 1
+        wanted: set[int] = set()
+        for number, count in counts.items():
+            wanted.update(PROGRESSIVE_VEHICLES.get(number, [number])[:count])
         for number in sorted(wanted):
             vehicle = VEHICLES[number]
             flag = (await bizhawk.read(ctx.bizhawk_ctx, [(vehicle.flag, 1, MAIN_RAM)]))[0]
             if flag[0]:
                 continue
-            x, y, z = vehicle.coords
+            if vehicle.position is None:
+                # Amélioration sans position (Faucon : traversée de la lave) : le flag seul.
+                await bizhawk.guarded_write(ctx.bizhawk_ctx, [(vehicle.flag, [1], MAIN_RAM)],
+                                            [(vehicle.flag, [0], MAIN_RAM), (OBJECT_LIST + 4, map_raw[4:12], MAIN_RAM),
+                                             (RAM["event_running"], [0], MAIN_RAM)])
+                continue
+            if vehicle.coords is None:
+                # Amélioration (crochet) : même position que l'Enterprise.
+                raw = (await bizhawk.read(ctx.bizhawk_ctx, [(VEHICLES[2].position, 12, MAIN_RAM)]))[0]
+                x, y, z = struct.unpack("<iii", raw)
+            else:
+                x, y, z = vehicle.coords
             writes = [(vehicle.position, struct.pack("<i", x), MAIN_RAM),
                       (vehicle.position + 8, struct.pack("<i", z), MAIN_RAM),
                       (vehicle.flag, [1], MAIN_RAM)]

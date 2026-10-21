@@ -37,6 +37,7 @@ ITEMS: dict[str, ItemData] = {
     # Progression
     "Hovercraft": ItemData(0, kind="progression", vehicle=1),
     "Enterprise": ItemData(0, kind="progression", vehicle=2),
+    "Falcon": ItemData(0, kind="progression", vehicle=5),        # progressif : Faucon, puis traversée de la lave
     "Sand Pearl": ItemData(0x232C, kind="progression", key_item=True),
     # Utiles
     "Auto-Potion": ItemData(0x23B0, kind="useful", key_item=True),   # augment
@@ -142,6 +143,8 @@ ITEMS: dict[str, ItemData] = {
     "Power Armlet": ItemData(0x2072, kind="useful"),
     "Black Belt Gi": ItemData(0x2015, kind="useful"),
     "Draw Attacks": ItemData(0x23C1, kind="useful", key_item=True),   # augment (Giott)
+    "Adrenaline": ItemData(0x239B, kind="useful", key_item=True),     # augments de Cid (lettre)
+    "Luca's Necklace": ItemData(0x2336, kind="progression", key_item=True),   # clé de la grotte scellée
     # Tranche 6 : tour de Babil
     "Tower Key": ItemData(0x2337, kind="progression", key_item=True),     # portes des canons (op076(9015))
     "Green Beret": ItemData(0x1FAA, kind="useful"),
@@ -158,6 +161,22 @@ ITEMS: dict[str, ItemData] = {
     "Hi-Potion x5": ItemData(0x138A, 5),
     "Remedy x5": ItemData(0x1399, 5),
     "Ether x2": ItemData(0x138C, 2),
+    "Shuriken": ItemData(0x1CE9, kind="useful"),
+    "Bomb Core": ItemData(0x13B5),
+    "Blood Sword": ItemData(0x1779, kind="useful"),
+    "Ninja Sutra": ItemData(0x13A7),
+    "Inferno": ItemData(0x23C0, kind="useful", key_item=True),
+    "Ogrekiller": ItemData(0x19CA, kind="useful"),
+    "Lilith's Kiss": ItemData(0x13B7),
+    "Ashura": ItemData(0x1A2E, kind="useful"),
+    "Bomb Crank": ItemData(0x13AF),
+    "Bacchus's Wine x3": ItemData(0x13C0, 3),
+    "Hermes Sandals x3": ItemData(0x13C1, 3),
+    "Decoy x3": ItemData(0x13C2, 3),
+    "Bomb Fragment x5": ItemData(0x13AE, 5),
+    "Bomb Crank x3": ItemData(0x13AF, 3),
+    "X-Potion x3": ItemData(0x138B, 3),
+    "10000 Gil": ItemData(0, 10000),
     "Heavenly Wrath x3": ItemData(0x13B3, 3),
     "Blue Fang": ItemData(0x13AD),
     "Bronze Hourglass x3": ItemData(0x13BD, 3),
@@ -167,13 +186,27 @@ ITEMS: dict[str, ItemData] = {
 # depuis une ville, le véhicule apparaît à la sortie sur la carte du monde, même loin du centre).
 class VehicleData(NamedTuple):
     flag: int                     # octet « véhicule disponible »
-    position: int                 # X, Y, Z (u32 chacun) en RAM
-    coords: tuple[int, int | None, int]   # Y None : on ne l'écrit pas
+    position: int | None          # X, Y, Z (u32 chacun) en RAM ; None : amélioration, flag seul
+    coords: tuple[int, int | None, int] | None   # Y None : on ne l'écrit pas ; None : position de l'Enterprise
 
 
 VEHICLES: dict[int, VehicleData] = {
     1: VehicleData(0x0CC130, 0x0D05F8, (81920, None, -3153920)),     # hovercraft, devant Damcyan
     2: VehicleData(0x0CC131, 0x0D0604, (-978944, 0, 1658880)),       # Enterprise, devant Baron
+    # Enterprise avec crochet (véhicule 4, flag 903) : remplace l'Enterprise là où elle se trouve.
+    4: VehicleData(0x0CC133, 0x0D061C, None),
+    # Faucon (véhicule 5, flag 904) : position en 0x0D0610 (écrite par op0B3(5, …), vérifié en émulateur),
+    # sous la surface, devant la tour de Babil (carte du véhicule : sous la surface par défaut).
+    5: VehicleData(0x0CC134, 0x0D0610, (-1228800, 102400, -2682880)),
+    # Traversée de la lave (flag 902, posé d'origine par Cid au château des nains) : flag seul.
+    3: VehicleData(0x0CC132, None, None),
+}
+# Véhicules progressifs : n-ième exemplaire reçu de l'objet -> véhicule (Enterprise, puis avec crochet).
+PROGRESSIVE_VEHICLES: dict[int, list[int]] = {2: [2, 4], 5: [5, 3]}
+
+# Chemins qui demandent en plus plusieurs exemplaires d'un objet (tous requis).
+CONNECTION_COUNTS: dict[tuple[str, str], list[tuple[str, int]]] = {
+    ("Baron", "Cave of Eblan"): [("Enterprise", 2)],   # l'Enterprise avec crochet porte l'hovercraft
 }
 
 # Objets de remplissage tirés au hasard quand il manque des objets dans le pool.
@@ -206,6 +239,9 @@ REGIONS = [
     "Underworld",
     "Dwarf Castle",
     "Tower of Babil",
+    "Cave of Eblan",
+    "Tower of Babil (upper)",
+    "Dwarf Castle (Cid)",
 ]
 
 # Chemins entre régions (départ : Baron) et objets nécessaires (l'un d'eux suffit).
@@ -232,6 +268,10 @@ CONNECTIONS: list[tuple[str, str, tuple[str, ...]]] = [
     ("Agart", "Underworld", ("Magma Stone",)), # puits d'Agart -> trou, avec l'Enterprise (jamais abîmée)
     ("Underworld", "Dwarf Castle", ()),
     ("Underworld", "Tower of Babil", ()),      # toujours accessible (le chemin des nains ou l'Enterprise)
+    ("Baron", "Cave of Eblan", ("Hovercraft",)),   # + Enterprise avec crochet : CONNECTION_COUNTS
+    ("Cave of Eblan", "Tower of Babil (upper)", ()),
+    # Après la chute (sous la surface, à bord du Faucon ou de l'Enterprise avec crochet) : Cid à l'infirmerie.
+    ("Tower of Babil (upper)", "Dwarf Castle (Cid)", ()),
 ]
 
 # --------------------------------------------------------------------------- #
@@ -573,17 +613,70 @@ LOCATIONS: dict[str, LocationData] = {
     "Tower of Babil Lower - Coffre 4": LocationData("Tower of Babil", 0x0CC32B, "Ice Armor", "coffre"),     # d08_08
     "Tower of Babil B9 - Coffre 1": LocationData("Tower of Babil", 0x0CC32C, "Arctic Wind", "coffre"),      # d08_10
     "Tower of Babil B9 - Coffre 2": LocationData("Tower of Babil", 0x0CC32D, "Hi-Potion", "coffre"),
-    "Tower of Babil B8 - Coffre 1": LocationData("Tower of Babil", 0x0CC32E, "Hi-Potion", "coffre"),        # d08_11
-    "Tower of Babil B7 - Coffre 1": LocationData("Tower of Babil", 0x0CC32F, "Dry Ether", "coffre"),        # d08_12
+    # B8 et B7 (d08_11, d08_12) : traversés après le piège de Golbez (chute en d08_14 -> hangar).
+    "Tower of Babil B8 - Coffre 1": LocationData("Tower of Babil (upper)", 0x0CC32E, "Hi-Potion", "coffre"),        # d08_11
+    "Tower of Babil B7 - Coffre 1": LocationData("Tower of Babil (upper)", 0x0CC32F, "Dry Ether", "coffre"),        # d08_12
     "Tower of Babil B13 - Map completed": LocationData("Tower of Babil", 0x0CC519, "Antarctic Wind x5", "carte"),
     "Tower of Babil B12 - Map completed": LocationData("Tower of Babil", 0x0CC51A, "Arctic Wind x3", "carte"),
     "Tower of Babil B11 - Map completed": LocationData("Tower of Babil", 0x0CC51B, "White Fang", "carte"),
     "Tower of Babil B10 - Map completed": LocationData("Tower of Babil", 0x0CC51E, "Hi-Potion x5", "carte"),
     "Tower of Babil B9 - Map completed": LocationData("Tower of Babil", 0x0CC523, "Remedy x5", "carte"),
-    "Tower of Babil B8 - Map completed": LocationData("Tower of Babil", 0x0CC525, "Ether x2", "carte"),
-    "Tower of Babil B7 - Map completed": LocationData("Tower of Babil", 0x0CC526, "Elixir", "carte"),
+    "Tower of Babil B8 - Map completed": LocationData("Tower of Babil (upper)", 0x0CC525, "Ether x2", "carte"),
+    "Tower of Babil B7 - Map completed": LocationData("Tower of Babil (upper)", 0x0CC526, "Elixir", "carte"),
     "Tower of Babil - Dr. Lugae defeated": LocationData("Tower of Babil", 0x0CBE67, None, "boss"),          # flag 187
     "Tower of Babil - Tower Key": LocationData("Tower of Babil", 0x0CBE68, "Tower Key", "evenement"),       # flag 188
+    "Tower of Babil - Cannons destroyed": LocationData("Tower of Babil", 0x0CBE6A, None, "evenement"),     # flag 190
+    # Ingénieur du château de Baron après les canons (flag 202) : 2e Enterprise = Enterprise avec crochet.
+    "Baron Castle - Enterprise hook": LocationData("Tower of Babil", 0x0CBE76, "Enterprise", "evenement"),
+    # Grotte d'Eblan (d09)
+    "Cave of Eblan B1 - Coffre 1": LocationData("Cave of Eblan", 0x0CC33D, "Shuriken", "coffre"),          # d09_00
+    "Cave of Eblan B1 - Coffre 2": LocationData("Cave of Eblan", 0x0CC33E, "Remedy", "coffre"),
+    "Cave of Eblan B1 - Coffre 3": LocationData("Cave of Eblan", 0x0CC33F, "Vampire Fang", "coffre"),
+    "Cave of Eblan B2 - Coffre 1": LocationData("Cave of Eblan", 0x0CC340, "Potion", "coffre"),            # d09_02
+    "Cave of Eblan B2 - Coffre 2": LocationData("Cave of Eblan", 0x0CC341, "Potion", "coffre"),
+    "Cave of Eblan First Passage - Coffre 1": LocationData("Cave of Eblan", 0x0CC342, "Ether", "coffre"),  # d09_04
+    "Cave of Eblan First Passage - Coffre 2": LocationData("Cave of Eblan", 0x0CC343, "Tent", "coffre"),
+    "Cave of Eblan First Passage - Coffre 3": LocationData("Cave of Eblan", 0x0CC344, "Hi-Potion", "coffre"),
+    "Cave of Eblan First Passage - Coffre 4": LocationData("Cave of Eblan", 0x0CC345, "Hi-Potion", "coffre"),
+    "Cave of Eblan First Passage - Coffre 5": LocationData("Cave of Eblan", 0x0CC346, "Cottage", "coffre"),
+    "Cave of Eblan First Passage - Coffre 6": LocationData("Cave of Eblan", 0x0CC347, "Hi-Potion", "coffre"),
+    "Cave of Eblan First Passage - Coffre 7": LocationData("Cave of Eblan", 0x0CC348, "Spider Silk", "coffre"),
+    "Cave of Eblan First Passage - Coffre 8": LocationData("Cave of Eblan", 0x0CC349, "Elixir", "coffre"),
+    "Cave of Eblan First Passage - Coffre 9": LocationData("Cave of Eblan", 0x0CC34A, "Elixir", "coffre"),
+    "Cave of Eblan First Passage - Coffre 10": LocationData("Cave of Eblan", 0x0CC34B, "Silver Hourglass", "coffre"),
+    "Cave of Eblan First Passage - Coffre 11": LocationData("Cave of Eblan", 0x0CC34C, "Phoenix Down", "coffre"),
+    "Cave of Eblan First Passage - Coffre 12": LocationData("Cave of Eblan", 0x0CC34D, "Phoenix Down", "coffre"),
+    "Cave of Eblan Second Passage - Coffre 1": LocationData("Cave of Eblan", 0x0CC34E, "Bomb Core", "coffre"),  # d09_05
+    "Cave of Eblan Second Passage - Coffre 2": LocationData("Cave of Eblan", 0x0CC34F, "Shuriken", "coffre"),
+    "Cave of Eblan Second Passage - Coffre 3": LocationData("Cave of Eblan", 0x0CC350, "Gold Needle", "coffre"),
+    "Cave of Eblan Second Passage - Coffre 4": LocationData("Cave of Eblan", 0x0CC351, "Dry Ether", "coffre"),
+    "Cave of Eblan - Coffre 1": LocationData("Cave of Eblan", 0x0CC352, "Blood Sword", "coffre"),          # d09_06
+    "Cave of Eblan - Coffre 2": LocationData("Cave of Eblan", 0x0CC353, "Ninja Sutra", "coffre"),          # d09_30
+    "Cave of Eblan Second Passage - Inferno augment": LocationData("Tower of Babil (upper)", 0x0CC3F1, "Inferno", "coffre"),  # après Rubicante
+    "Cave of Eblan B1 - Map completed": LocationData("Cave of Eblan", 0x0CC530, "Bacchus's Wine x3", "carte"),
+    "Cave of Eblan First Passage - Map completed": LocationData("Cave of Eblan", 0x0CC534, "Hermes Sandals x3", "carte"),
+    "Cave of Eblan Second Passage - Map completed": LocationData("Cave of Eblan", 0x0CC535, "Decoy x3", "carte"),
+    "Cave of Eblan - Edge joins": LocationData("Cave of Eblan", 0x0CBE7A, None, "evenement"),              # flag 206
+    # Tour de Babil, partie haute (d08_15 à d08_20)
+    "Tower of Babil B1 - Coffre 1": LocationData("Tower of Babil (upper)", 0x0CC333, "Unicorn Horn", "coffre"),   # d08_15
+    "Tower of Babil B1 - Coffre 2": LocationData("Tower of Babil (upper)", 0x0CC334, "Silver Hourglass", "coffre"),
+    "Tower of Babil B2 - Coffre 1": LocationData("Tower of Babil (upper)", 0x0CC335, "Ogrekiller", "coffre"),     # d08_16
+    "Tower of Babil B3 - Coffre 1": LocationData("Tower of Babil (upper)", 0x0CC336, "Lilith's Kiss", "coffre"),  # d08_17
+    "Tower of Babil B4 - Coffre 1": LocationData("Tower of Babil (upper)", 0x0CC337, "Ashura", "coffre"),         # d08_19
+    "Tower of Babil B5 - Coffre 1": LocationData("Tower of Babil (upper)", 0x0CC338, "10000 Gil", "coffre"),      # d08_20
+    "Tower of Babil B1 - Map completed": LocationData("Tower of Babil (upper)", 0x0CC529, "Bomb Fragment x5", "carte"),
+    "Tower of Babil B2 - Map completed": LocationData("Tower of Babil (upper)", 0x0CC52A, "Bomb Crank x3", "carte"),
+    "Tower of Babil B3 - Map completed": LocationData("Tower of Babil (upper)", 0x0CC52B, "Red Fang", "carte"),
+    "Tower of Babil B4 - Map completed": LocationData("Tower of Babil (upper)", 0x0CC52D, "X-Potion x3", "carte"),
+    "Tower of Babil B5 - Map completed": LocationData("Tower of Babil (upper)", 0x0CC52E, "Elixir", "carte"),
+    "Tower of Babil - Edge's parents defeated": LocationData("Tower of Babil (upper)", 0x0CBE7F, None, "boss"),   # flag 211 (après le combat)
+    "Tower of Babil - Rubicante defeated": LocationData("Tower of Babil (upper)", 0x0CBE81, None, "boss"),        # flag 213
+    "Tower of Babil - Falcon": LocationData("Tower of Babil (upper)", 0x0CBE85, "Falcon", "evenement"),          # flag 217 (chute)
+    # Cid à l'infirmerie (t12_11) : traversée de la lave (2e Faucon) et l'augment Adrenaline.
+    "Dwarf Castle - Cid upgrades the Falcon": LocationData("Dwarf Castle (Cid)", 0x0CBE8A, "Falcon", "evenement"),  # flag 222
+    "Dwarf Castle - Cid's Adrenaline augment": LocationData("Dwarf Castle (Cid)", 0x0CBE89, "Adrenaline", "evenement"),  # flag 221
+    # Giott après la chute (t12_02) : Luca donne son collier.
+    "Dwarf Castle - Luca's Necklace": LocationData("Dwarf Castle (Cid)", 0x0CBE88, "Luca's Necklace", "evenement"),  # flag 220
 
     # --- Ancien objectif de la tranche 1, devenu une location ------------------
     "Rosa soignee": LocationData("Kaipo (retour)", 0x0CBDDD, None, "evenement"),                  # flag 49
@@ -593,9 +686,9 @@ LOCATIONS: dict[str, LocationData] = {
 
 }
 
-# Objectif : canons de la tour de Babil détruits (flag 190), dans la région GOAL_REGION.
-GOAL_FLAG = 0x0CBE6A
-GOAL_REGION = "Tower of Babil"
+# Objectif : Cid a amélioré le Faucon (flag 222, infirmerie du château des nains), dans la région GOAL_REGION.
+GOAL_FLAG = 0x0CBE8A
+GOAL_REGION = "Dwarf Castle (Cid)"
 
 # --------------------------------------------------------------------------- #
 # Adresses mémoire utiles au client (étape 6)                                 #

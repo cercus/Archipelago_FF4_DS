@@ -65,9 +65,34 @@ class TestSlice5Logic(FF4DSTestBase):
 class TestSlice6Logic(FF4DSTestBase):
     """Tour de Babil : depuis le monde souterrain ; l'objectif (canons) demande la Tower Key."""
 
-    def test_babil_and_goal(self) -> None:
+    def test_babil_cannons(self) -> None:
         self.collect_by_name(["Enterprise", "Magma Stone"])
         self.assertTrue(self.can_reach_location("Tower of Babil B13 - Coffre 1"))
-        self.assertFalse(self.can_reach_location("Objectif"))
+        self.assertFalse(self.can_reach_location("Tower of Babil - Cannons destroyed"))
         self.collect_by_name("Tower Key")
+        self.assertTrue(self.can_reach_location("Tower of Babil - Cannons destroyed"))
+
+    def test_eblan_needs_hook_and_hovercraft(self) -> None:
+        enterprise = self.get_items_by_name("Enterprise")
+        self.assertEqual(len(enterprise), 2)
+        self.collect(enterprise[0])
+        self.collect_by_name("Hovercraft")
+        self.assertFalse(self.can_reach_location("Cave of Eblan B1 - Coffre 1"))
+        self.collect(enterprise[1])
+        self.assertTrue(self.can_reach_location("Cave of Eblan B1 - Coffre 1"))
+        self.assertTrue(self.can_reach_location("Objectif"))
+
+
+class TestFalcon(FF4DSTestBase):
+    """Faucon progressif : la location du Faucon (chute) et celles de Cid suivent la tour de Babil (haut)."""
+
+    def test_two_falcons(self) -> None:
+        self.assertEqual(len(self.get_items_by_name("Falcon")), 2)
+
+    def test_cid_after_babil(self) -> None:
+        self.collect_by_name(["Hovercraft"])
+        self.assertFalse(self.can_reach_location("Dwarf Castle - Cid upgrades the Falcon"))
+        self.collect_by_name(["Enterprise"])
+        self.assertTrue(self.can_reach_location("Tower of Babil - Falcon"))
+        self.assertTrue(self.can_reach_location("Dwarf Castle - Luca's Necklace"))
         self.assertTrue(self.can_reach_location("Objectif"))

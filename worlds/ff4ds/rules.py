@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from rule_builder.rules import Has, HasAny
 
-from .data import CONNECTIONS
+from .data import CONNECTION_COUNTS, CONNECTIONS
 
 if TYPE_CHECKING:
     from .world import FF4DSWorld
@@ -33,9 +33,13 @@ def set_all_rules(world: FF4DSWorld) -> None:
     for source, target, needed in CONNECTIONS:
         if needed:
             rule = Has(needed[0]) if len(needed) == 1 else HasAny(*needed)
+            for item, count in CONNECTION_COUNTS.get((source, target), []):
+                rule = rule & Has(item, count)
             world.set_rule(world.get_entrance(f"{source} -> {target}"), rule)
 
-    # Tranche 6 : les portes des canons s'ouvrent avec la Tower Key (op076(9015)) ; objectif = canons détruits.
-    world.set_rule(world.get_location("Objectif"), Has("Tower Key"))
+    # Tranche 6 : les portes des canons s'ouvrent avec la Tower Key (op076(9015)) ; l'ingénieur de Baron
+    # (crochet) n'apparaît qu'après les canons.
+    for name in ("Tower of Babil - Cannons destroyed", "Baron Castle - Enterprise hook"):
+        world.set_rule(world.get_location(name), Has("Tower Key"))
 
     world.set_completion_rule(Has("Victoire"))
